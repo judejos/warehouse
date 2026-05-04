@@ -1,15 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
-import { Card, CardContent } from "../components/ui/card";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "../components/ui/table";
-import { Badge } from "../components/ui/badge";
+import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
   Search, CheckCircle, Loader2, RefreshCw, ChevronDown, ChevronRight,
-  AlertTriangle, Package, ScanLine, Printer,
+  AlertTriangle, Package, Printer,
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
 import {

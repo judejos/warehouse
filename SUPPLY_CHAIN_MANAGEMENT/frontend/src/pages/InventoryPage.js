@@ -44,8 +44,8 @@ import {
 import { Label } from "../components/ui/label";
 import {
   Search, Loader2, RefreshCw, ChevronDown, ChevronUp,
-  Package, Layers, Warehouse, ArrowUpCircle, ArrowDownCircle,
-  Plus, AlertTriangle, Box, Grid3X3, Database, BarChart3,
+  Package, Warehouse, ArrowUpCircle, ArrowDownCircle,
+  Plus, AlertTriangle, Box, Grid3X3, BarChart3,
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
 import { useAuth } from "../components/lib/auth-context";
@@ -54,7 +54,6 @@ import {
   listRacks, createRack,
   listStockMovements,
   listBatches,
-  getProductStock,
   listProducts,
 } from "../services/apiService";
 
@@ -69,7 +68,6 @@ const toArr = (res, key) => {
 };
 
 const fmt    = (n, d = 0) => n != null ? Number(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d }) : "—";
-const fmtMoney = (n) => n != null ? `₹${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
 const fmtDate  = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 const fmtDt    = (d) => d ? new Date(d).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "—";
 
@@ -107,27 +105,6 @@ const Tab = ({ active, onClick, children, badge }) => (
   </button>
 );
 
-/* ── Small field row ── */
-const F = ({ label, value, mono }) => (
-  <div className="grid grid-cols-2 gap-1 py-0.5 border-b border-gray-50 last:border-0">
-    <span className="text-[10px] text-gray-400 font-medium">{label}</span>
-    <span className={`text-[11px] text-gray-700 ${mono ? "font-mono" : ""} truncate`}>{value ?? "—"}</span>
-  </div>
-);
-
-/* ── Capacity bar ── */
-const CapBar = ({ current, total, className = "" }) => {
-  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
-  const color = pct >= 90 ? "bg-red-400" : pct >= 60 ? "bg-amber-400" : "bg-green-400";
-  return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-[10px] text-gray-500 tabular-nums w-8 text-right">{pct}%</span>
-    </div>
-  );
-};
 
 
 /* ════════════════════════════════════════════════════════════
@@ -929,21 +906,6 @@ export default function InventoryPage() {
   /* ── Summary stats ── */
   const totalProducts  = products.length;
   // totalBins would need bins endpoint — zones/racks give full structure
-  const outOfStock     = products.filter(p => {
-    const row = inventoryRows.find(r => r.product === p.product_id);
-    return !row || row.quantity === 0;
-  }).length;
-  const lowStockCount  = inventoryRows.length > 0
-    ? Object.values(
-        inventoryRows.reduce((m, r) => {
-          m[r.product] = (m[r.product] || 0) + r.quantity;
-          return m;
-        }, {})
-      ).filter((qty, i) => {
-        const p = products[i];
-        return p && qty > 0 && qty <= (p.re_order || 0);
-      }).length
-    : 0;
   const recentMovements = movements.length;
 
   return (

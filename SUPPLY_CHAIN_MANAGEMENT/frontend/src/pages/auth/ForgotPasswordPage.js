@@ -5,7 +5,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "../../components/ui/input-otp";
-import { Warehouse, ArrowLeft, Loader2, Mail, Lock, CheckCircle } from "lucide-react";
+import { Warehouse, ArrowLeft, Loader2 } from "lucide-react";
 import { forgotPasswordOTP, resetPassword } from "../../services/apiService";
 
 export default function ForgotPasswordPage() {

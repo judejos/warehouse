@@ -17,7 +17,6 @@ import { Card }    from "../components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
-import { Badge }   from "../components/ui/badge";
 import { Plus, Search, Eye, Loader2, RefreshCw, Truck, X, Printer } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -215,7 +214,7 @@ function ViewASNDialog({ asn, onClose }) {
 
 /* ══════════════════════════════════════════════ */
 export default function ASNPage() {
-  const { toast }  = useToast();
+  const { toast: showToast } = useToast();
   const navigate   = useNavigate();
 
   const [search,    setSearch]   = useState("");
@@ -229,22 +228,22 @@ export default function ASNPage() {
       const data = await listASN();
       setAsnData(toArray(data));
     } catch {
-      toast({ title: "Error", description: "Failed to load ASNs.", variant: "destructive" });
+      showToast({ title: "Error", description: "Failed to load ASNs.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [showToast]);
 
   useEffect(() => { loadASNs(); }, [loadASNs]);
 
-  const handleView = async (asnId) => {
+  const handleView = useCallback(async (asnId) => {
     try {
       const asn = await getASN(asnId);
       setViewASN(asn);
     } catch {
-      toast({ title: "Error", description: "Failed to load ASN details.", variant: "destructive" });
+      showToast({ title: "Error", description: "Failed to load ASN details.", variant: "destructive" });
     }
-  };
+  }, [showToast]);
 
   const q        = search.toLowerCase();
   const filtered = asnData.filter(a =>

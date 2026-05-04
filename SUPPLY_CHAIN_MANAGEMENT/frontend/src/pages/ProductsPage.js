@@ -86,7 +86,7 @@ function VendorPanel({ product }) {
       .catch(() => { if (!cancelled) setVendors(product.vendor_details ? [product.vendor_details] : []); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [product.product_id]);
+  }, [product.product_id, product.vendor_details]);
 
   if (loading) {
     return (

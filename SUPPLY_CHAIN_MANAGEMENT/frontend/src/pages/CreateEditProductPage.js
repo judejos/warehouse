@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import {
@@ -18,19 +17,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../components/ui/popover";
 import { useToast } from "../components/ui/use-toast";
 import {
   ArrowLeft,
   Info,
-  Plus,
   Loader2,
   Package,
-  Tag,
   DollarSign,
   BarChart3,
   Truck,
@@ -46,7 +38,7 @@ import {
   listVendors,
 } from "../services/apiService";
 
-/* ─── helpers ─── */
+/* ── helpers ── */
 const toArray = (res, key = null) => {
   if (!res) return [];
   if (Array.isArray(res)) return res;
@@ -56,7 +48,7 @@ const toArray = (res, key = null) => {
   return Object.values(res).find(Array.isArray) || [];
 };
 
-/* ─── constants ─── */
+/* ── constants ── */
 const ABC_OPTIONS = [
   { value: "A", label: "A – High Value", color: "bg-red-100 text-red-700 border-red-200" },
   { value: "B", label: "B – Medium Value", color: "bg-amber-100 text-amber-700 border-amber-200" },
@@ -104,7 +96,7 @@ const EMPTY_FORM = {
   XYZ: "X",
 };
 
-/* ─── Segment selector ─── */
+/* ── Segment selector ── */
 function SegmentSelector({ options, value, onChange }) {
   return (
     <div className="flex gap-2 flex-wrap">
@@ -126,7 +118,7 @@ function SegmentSelector({ options, value, onChange }) {
   );
 }
 
-/* ─── Classification Field with info icon ─── */
+/* ── Classification Field with info icon ── */
 function ClassificationField({ label, infoKey, options, value, onChange }) {
   const info = CLASSIFICATION_INFO[infoKey];
   return (
@@ -152,7 +144,7 @@ function ClassificationField({ label, infoKey, options, value, onChange }) {
   );
 }
 
-/* ─── Category selector with add ─── */
+/* ── Category selector with add ── */
 function CategorySelector({ categories, value, onChange, onAdd }) {
   const [open, setOpen] = useState(false);
   const [newCat, setNewCat] = useState("");
@@ -217,7 +209,7 @@ function CategorySelector({ categories, value, onChange, onAdd }) {
   );
 }
 
-/* ─── Section wrapper ─── */
+/* ── Section wrapper ── */
 function Section({ icon: Icon, title, children }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -232,7 +224,7 @@ function Section({ icon: Icon, title, children }) {
   );
 }
 
-/* ─── Main Page ─── */
+/* ── Main Page ── */
 export default function CreateEditProductPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -264,24 +256,7 @@ export default function CreateEditProductPage() {
     load();
   }, []);
 
-  /* if editing, pre-fill */
-  useEffect(() => {
-    if (!isEdit) return;
-    const prefill = location.state?.product;
-    if (prefill) {
-      populate(prefill);
-      setIsLoading(false);
-    } else {
-      getProduct(id)
-        .then((p) => { populate(p); setIsLoading(false); })
-        .catch((e) => {
-          toast({ title: "Error", description: e.message, variant: "destructive" });
-          navigate("/products");
-        });
-    }
-  }, [id]);
-
-  const populate = (product) => {
+  const populate = useCallback((product) => {
     setFormData({
       product_name: product.product_name ?? "",
       brand_name:   product.brand_name   ?? "",
@@ -303,7 +278,24 @@ export default function CreateEditProductPage() {
         prev.includes(product.category) ? prev : [...prev, product.category]
       );
     }
-  };
+  }, []);
+
+  /* if editing, pre-fill */
+  useEffect(() => {
+    if (!isEdit) return;
+    const prefill = location.state?.product;
+    if (prefill) {
+      populate(prefill);
+      setIsLoading(false);
+    } else {
+      getProduct(id)
+        .then((p) => { populate(p); setIsLoading(false); })
+        .catch((e) => {
+          toast({ title: "Error", description: e.message, variant: "destructive" });
+          navigate("/products");
+        });
+    }
+  }, [id, isEdit, location.state?.product, navigate, toast, populate]);
 
   const handleAddCategory = async (cat) => {
     const normalized = cat.trim().toLowerCase();
@@ -642,4 +634,3 @@ export default function CreateEditProductPage() {
     </div>
   );
 }
-// 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -31,12 +31,8 @@ export default function SettingsPage() {
     prApproval: true,
   });
 
-  useEffect(() => {
-    loadWarehouse();
-  }, []);
-
   /* ─── Load Warehouse ───────────────────────── */
-  const loadWarehouse = async () => {
+  const loadWarehouse = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await getWarehouse();
@@ -73,7 +69,11 @@ export default function SettingsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadWarehouse();
+  }, [loadWarehouse]);
 
 
   /* ─── Auto hide notification ───────────────── */

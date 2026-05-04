@@ -45,7 +45,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
   ScanLine, CheckCircle, AlertTriangle, Loader2, RefreshCw,
-  Package, MapPin, ChevronRight, Trash2, Download, RotateCcw,
+  Package, MapPin, ChevronRight, Trash2, RotateCcw,
   XCircle, Box, Printer,
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
@@ -188,7 +188,7 @@ function openPrintSheet(grn, items) {
     .print-btn { background: #1E3A8A; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; font-size: 13px; cursor: pointer; font-family: inherit; }
     .print-btn:hover { background: #162d6e; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"><\/script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
 </head>
 <body>
   <div class="header-bar">
@@ -249,7 +249,7 @@ function openPrintSheet(grn, items) {
       });
       setTimeout(function() { window.print(); }, 400);
     };
-  <\/script>
+  </script>
 </body>
 </html>`;
 

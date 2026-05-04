@@ -97,7 +97,8 @@ export const apiRequest = async (endpoint, method = 'GET', data = null) => {
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error || result.detail || 'Request failed');
+      const errorMsg = result.error || result.detail || (typeof result === 'object' ? JSON.stringify(result) : 'Request failed');
+      throw new Error(errorMsg);
     }
 
     return result;

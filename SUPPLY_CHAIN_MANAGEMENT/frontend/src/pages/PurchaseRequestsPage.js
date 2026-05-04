@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card } from "../components/ui/card";
@@ -9,7 +9,7 @@ import { Badge } from "../components/ui/badge";
 import {
   Plus, Search, Check, X, Loader2, Eye, Building2, Package,
   User, Mail, Phone, MapPin, Clock, Tag, FileText, AlertTriangle,
-  ChevronDown, RefreshCw,
+  RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -78,7 +78,7 @@ function ApproveEditDrawer({ pr, vendors, products, open, onClose, onConfirm, is
       setCartons(String(pr.requested_cartons || ""));
       setNotes("");
     }
-  }, [pr?.pr_id]);
+  }, [pr]);
 
   if (!pr) return null;
 
@@ -304,13 +304,7 @@ export default function PurchaseRequestsPage() {
   const isManager = ["manager", "admin"].includes(user?.role);
   const isFinance  = ["finance_director", "admin"].includes(user?.role);
 
-  useEffect(() => {
-    loadPRs();
-    loadProducts();
-    loadVendors();
-  }, []);
-
-  const loadPRs = async () => {
+  const loadPRs = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await listPurchaseRequests();
@@ -318,17 +312,23 @@ export default function PurchaseRequestsPage() {
     } catch (err) {
       toast({ title: "Error", description: "Failed to load purchase requests.", variant: "destructive" });
     } finally { setIsLoading(false); }
-  };
+  }, [toast]);
 
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try { const data = await listProducts(); setProducts(toArray(data, "products")); }
     catch { /* silent */ }
-  };
+  }, []);
 
-  const loadVendors = async () => {
+  const loadVendors = useCallback(async () => {
     try { const data = await listVendors(); setVendors(toArray(data, "vendors")); }
     catch { /* silent */ }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadPRs();
+    loadProducts();
+    loadVendors();
+  }, [loadPRs, loadProducts, loadVendors]);
 
   // ── Detail view ──────────────────────────────────────────────────────────
   const handleViewDetails = async (pr) => {

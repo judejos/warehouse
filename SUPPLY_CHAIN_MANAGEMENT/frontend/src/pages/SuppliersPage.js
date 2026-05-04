@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -18,7 +18,6 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import {
   listSuppliers,
-  createSupplier,
   updateSupplier,
   deleteSupplier,
   getSupplier,
@@ -63,11 +62,7 @@ export default function SuppliersPage() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadSuppliers();
-  }, []);
-
-  const loadSuppliers = async () => {
+  const loadSuppliers = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await listSuppliers();
@@ -82,7 +77,11 @@ export default function SuppliersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, [loadSuppliers]);
 
   const handleOpenEdit = async (supplierId) => {
     setIsLoading(true);

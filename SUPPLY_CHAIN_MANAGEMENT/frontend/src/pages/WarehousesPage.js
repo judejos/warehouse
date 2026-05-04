@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "../components/ui/card";
 import { ChevronRight, Plus, Pencil, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -24,11 +24,7 @@ export default function WarehousesPage() {
   const [inventoryLocations, setInventoryLocations] = useState([]);
   const [path, setPath] = useState({});
 
-  useEffect(() => {
-    loadWarehouseAndInventory();
-  }, []);
-
-  const loadWarehouseAndInventory = async () => {
+  const loadWarehouseAndInventory = useCallback(async () => {
     setIsLoading(true);
     try {
       // ✅ Use allSettled so a failed listInventory doesn't kill the warehouse display
@@ -74,7 +70,11 @@ export default function WarehousesPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadWarehouseAndInventory();
+  }, [loadWarehouseAndInventory]);
 
   // ─── Breadcrumb + navigation ─────────────────────────────────────────────
   const { zoneIdx, shelfIdx } = path;

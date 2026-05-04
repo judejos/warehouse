@@ -5,12 +5,11 @@ import { Card, CardContent } from "../components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
-import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
   Search, Loader2, RefreshCw, Plus, ScanLine, ChevronDown, ChevronUp,
-  CheckCircle, XCircle, Package, ClipboardList, Clock, AlertTriangle,
+  CheckCircle, Package,
 } from "lucide-react";
 import { useAuth } from "../components/lib/auth-context";
 import { useToast } from "../components/ui/use-toast";
@@ -84,7 +83,7 @@ function SectionHead({ title, right }) {
 // SUPERVISOR PANEL — Create GRN + Add items by barcode scan
 // No popups — all inline using vertical grid layout
 // ════════════════════════════════════════════════════════════════════════
-function SupervisorPanel({ poList, asnList, onGRNCreated }) {
+function SupervisorPanel({ poList, asnList, existingGRNs, onGRNCreated }) {
   const { toast } = useToast();
 
   // ── Create GRN form ──
@@ -117,6 +116,31 @@ function SupervisorPanel({ poList, asnList, onGRNCreated }) {
     }
   }, []);
 
+  // Default receipt date to today
+  useEffect(() => {
+    if (!grnForm.receipt_date) {
+      setGrnForm(f => ({ ...f, receipt_date: new Date().toISOString().split("T")[0] }));
+    }
+  }, [grnForm.receipt_date]);
+
+  const generateGRN = (poId) => {
+    if (!poId) return "";
+    const date = new Date().toISOString().split("T")[0].replace(/-/g, "");
+    const prefix = `GRN-${poId}-${date}-`;
+    
+    // Look for highest existing suffix
+    const existing = (existingGRNs || [])
+      .filter(g => (g.grn_number || "").startsWith(prefix))
+      .map(g => {
+        const parts = g.grn_number.split("-");
+        const last = parseInt(parts[parts.length - 1]);
+        return isNaN(last) ? 0 : last;
+      });
+    
+    const nextSeq = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+    return `${prefix}${String(nextSeq).padStart(3, "0")}`;
+  };
+
   // Create GRN
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -125,13 +149,18 @@ function SupervisorPanel({ poList, asnList, onGRNCreated }) {
       return;
     }
     setCreating(true);
+    const selectedPO = poList.find(p => p.po_id === grnForm.po);
+    const payload = {
+      grn_number:   grnForm.grn_number,
+      po:           grnForm.po,
+      receipt_date: grnForm.receipt_date,
+    };
+    if (grnForm.asn) payload.asn = grnForm.asn;
+    if (selectedPO?.vendor) payload.vendor = selectedPO.vendor;
+    else if (selectedPO?.vendor_id) payload.vendor = selectedPO.vendor_id;
+
     try {
-      const res = await createGRNBySupervisor({
-        grn_number:   grnForm.grn_number,
-        po:           grnForm.po,
-        asn:          grnForm.asn || null,
-        receipt_date: grnForm.receipt_date,
-      });
+      const res = await createGRNBySupervisor(payload);
       toast({ title: "GRN Created", description: `${res.grn_id || "GRN"} created. Scan items below.` });
       // fetch full GRN
       const created = await getGRN(res.grn_id || grnForm.grn_number);
@@ -210,9 +239,19 @@ function SupervisorPanel({ poList, asnList, onGRNCreated }) {
             <form onSubmit={handleCreate}>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="grid gap-1.5">
-                  <Label className="text-xs font-medium text-gray-600">GRN Number *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-gray-600">GRN Number *</Label>
+                    <button 
+                      type="button"
+                      onClick={() => setGrnForm(f => ({ ...f, grn_number: generateGRN(f.po) }))}
+                      disabled={!grnForm.po}
+                      className="text-[10px] text-[#1E3A8A] hover:underline disabled:opacity-50"
+                    >
+                      Regenerate
+                    </button>
+                  </div>
                   <Input
-                    placeholder="e.g. GRN-VND-2024-001"
+                    placeholder="Auto-generated or enter manually"
                     value={grnForm.grn_number}
                     onChange={e => setGrnForm(f => ({ ...f, grn_number: e.target.value }))}
                     className="h-9 text-sm border-gray-300"
@@ -231,7 +270,15 @@ function SupervisorPanel({ poList, asnList, onGRNCreated }) {
                 </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs font-medium text-gray-600">Purchase Order *</Label>
-                  <Select value={grnForm.po} onValueChange={v => setGrnForm(f => ({ ...f, po: v }))}>
+                  <Select value={grnForm.po} onValueChange={v => setGrnForm(f => {
+                    const next = { ...f, po: v, grn_number: f.grn_number || generateGRN(v) };
+                    // Clear ASN if it doesn't belong to the new PO
+                    const asnObj = asnList.find(a => a.asn_id === f.asn);
+                    if (asnObj && String(asnObj.po || asnObj.po_id) !== String(v)) {
+                      next.asn = "";
+                    }
+                    return next;
+                  })}>
                     <SelectTrigger className="h-9 text-sm border-gray-300">
                       <SelectValue placeholder="Select PO" />
                     </SelectTrigger>
@@ -246,12 +293,18 @@ function SupervisorPanel({ poList, asnList, onGRNCreated }) {
                 </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs font-medium text-gray-600">ASN (Optional)</Label>
-                  <Select value={grnForm.asn} onValueChange={v => setGrnForm(f => ({ ...f, asn: v }))}>
+                  <Select 
+                    value={grnForm.asn} 
+                    onValueChange={v => setGrnForm(f => ({ ...f, asn: v }))}
+                    disabled={!grnForm.po}
+                  >
                     <SelectTrigger className="h-9 text-sm border-gray-300">
-                      <SelectValue placeholder="No ASN" />
+                      <SelectValue placeholder={grnForm.po ? "Select ASN (Optional)" : "Select PO first"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {asnList.map(asn => (
+                      {asnList
+                        .filter(asn => String(asn.po) === String(grnForm.po) || String(asn.po_id) === String(grnForm.po))
+                        .map(asn => (
                         <SelectItem key={asn.asn_id} value={asn.asn_id}>
                           {asn.asn_id} — {asn.vendor_name || asn.vendor || ""}
                         </SelectItem>
@@ -1058,6 +1111,7 @@ export default function GRNPage() {
         <SupervisorPanel
           poList={poList}
           asnList={asnList}
+          existingGRNs={grns}
           onGRNCreated={() => { loadAll(); setTab("list"); }}
         />
       )}

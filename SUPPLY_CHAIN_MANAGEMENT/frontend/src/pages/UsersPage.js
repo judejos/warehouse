@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
@@ -64,9 +64,7 @@ export default function UsersPage() {
   // ✅ Per-field inline errors — keyed by field name
   const [fieldErrors, setFieldErrors] = useState({});
 
-  useEffect(() => { loadUsers(); }, []);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await listEmployees();
@@ -77,7 +75,9 @@ export default function UsersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const clearFieldErrors = () => setFieldErrors({});
 

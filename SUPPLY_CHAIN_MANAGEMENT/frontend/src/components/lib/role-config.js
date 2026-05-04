@@ -17,52 +17,63 @@ import {
 
 const allModules = {
   dashboard:        { title: "Dashboard",        url: "/dashboard",         icon: LayoutDashboard },
-  products:         { title: "Products",         url: "/products",          icon: Package },
-  inventory:        { title: "Inventory",        url: "/inventory",         icon: Package },
-  purchaseRequests: { title: "Purchase Requests",url: "/purchase-requests", icon: FileText },
-  asn:              { title: "ASN",              url: "/asn",               icon: Truck },
-  grn:              { title: "GRN",              url: "/grn",               icon: ClipboardCheck },
-  qualityCheck:     { title: "Quality Check",    url: "/quality-check",     icon: CheckSquare },
-  users:            { title: "Users",            url: "/users",             icon: Users },
-  vendors:          { title: "Vendors",          url: "/vendors",           icon: Building2 },
-  suppliers:        { title: "Suppliers",        url: "/suppliers",         icon: UserCheck },
-  warehouses:       { title: "Warehouses",       url: "/warehouses",        icon: Warehouse },
-  outbound:         { title: "Outbound Orders",  url: "/outbound",          icon: PackageOpen },
-  finance:          { title: "Finance",          url: "/finance",           icon: DollarSign },
-  settings:         { title: "Settings",         url: "/settings",          icon: Settings },
-  scanner:          { title: "Barcode Scanner", url: "/barcode-scanner", icon: ScanLine }
+  products:         { title: "Product",           url: "/products",          icon: Package },
+  inventory:        { title: "Inventory",         url: "/inventory",         icon: Package },
+  purchaseRequests: { title: "PR",                url: "/purchase-requests", icon: FileText },
+  asn:              { title: "ASN",               url: "/asn",               icon: Truck },
+  grn:              { title: "GRN",               url: "/grn",               icon: ClipboardCheck },
+  qualityCheck:     { title: "QC",                url: "/quality-check",     icon: CheckSquare },
+  users:            { title: "Users",             url: "/users",             icon: Users },
+  vendors:          { title: "Vendor",            url: "/vendors",           icon: Building2 },
+  suppliers:        { title: "Supplier",          url: "/suppliers",         icon: UserCheck },
+  warehouses:       { title: "Warehouse",         url: "/warehouses",        icon: Warehouse },
+  outbound:         { title: "Outbound Orders",   url: "/outbound",          icon: PackageOpen },
+  finance:          { title: "Finance",           url: "/finance",           icon: DollarSign },
+  settings:         { title: "Settings",          url: "/settings",          icon: Settings },
+  scanner:          { title: "Barcode Scanner",   url: "/barcode-scanner",   icon: ScanLine }
 };
 
 const roleModules = {
   // Full access
   admin: [
-    "dashboard", "products", "inventory", "purchaseRequests", "asn", "grn",
-    "users", "vendors", "suppliers", "warehouses", "outbound",
-    "qualityCheck", "finance", "settings","scanner"
+    "dashboard",
+    "purchaseRequests",
+    "asn",
+    "grn",
+    "vendors",
+    "suppliers",
+    "qualityCheck",
+    "scanner",
+    "inventory",
+    "products",
+    "outbound",
+    "warehouses",
+    "finance",
+    "users",
+    "settings"
   ],
   // Operational managers
   manager: [
-    "dashboard", "products", "inventory", "purchaseRequests",
-    "asn", "outbound", "vendors", "suppliers",
+    "dashboard", "purchaseRequests", "asn", "outbound", "vendors", "suppliers", "products", "inventory"
   ],
   // Warehouse supervisor
   supervisor: [
-    "dashboard", "inventory", "asn", "grn",
+    "dashboard", "asn", "grn", "inventory"
   ],
-  // QC roles — backend may return either of these strings
+  // QC roles
   quality_checker: [
-    "dashboard", "qualityCheck", "grn",
+    "dashboard", "qualityCheck", "grn"
   ],
   quality_assistant: [
-    "dashboard", "qualityCheck", "grn",
+    "dashboard", "qualityCheck", "grn"
   ],
   // Finance
   finance_director: [
-    "dashboard", "finance", "purchaseRequests",
+    "dashboard", "purchaseRequests", "finance"
   ],
   // Inventory manager
   inventory_manager: [
-    "dashboard", "products", "inventory", "vendors", "suppliers", "warehouses", "scanner"
+    "dashboard", "vendors", "suppliers", "scanner", "inventory", "products", "warehouses"
   ],
 };
 

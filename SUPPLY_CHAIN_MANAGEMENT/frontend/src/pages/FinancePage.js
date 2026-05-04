@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Badge } from "../components/ui/badge";
@@ -14,11 +14,7 @@ export default function FinancePage() {
   const [financeData, setFinanceData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadFinanceData();
-  }, []);
-
-  const loadFinanceData = async () => {
+  const fetchFinanceData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [prs, pos] = await Promise.allSettled([
@@ -34,7 +30,7 @@ export default function FinancePage() {
         .map(pr => ({
           id:        pr.pr_id,
           type:      "PR",
-          amount:    parseFloat(pr.total_amount) || 0,   // Django returns decimal as string
+          amount:    parseFloat(pr.total_amount) || 0,
           status:    "approved",
           date:      pr.created_at,
           reference: pr.product_name || "-",
@@ -43,7 +39,7 @@ export default function FinancePage() {
       const purchaseOrders = posData.map(po => ({
         id:        po.po_id,
         type:      "PO",
-        amount:    parseFloat(po.total_amount) || 0,    // Django returns decimal as string
+        amount:    parseFloat(po.total_amount) || 0,
         status:    "paid",
         date:      po.created_at,
         reference: po.vendor_name || "-",
@@ -60,7 +56,11 @@ export default function FinancePage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchFinanceData();
+  }, [fetchFinanceData]);
 
   const q = search.toLowerCase();
   const filtered = financeData.filter(item =>

@@ -18,7 +18,7 @@
  *   - expected_quantity IntegerField               REQUIRED
  *   - shipped_quantity  IntegerField               REQUIRED (set = expected initially)
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button }  from "../components/ui/button";
 import { Input }   from "../components/ui/input";
@@ -122,7 +122,7 @@ export default function CreateASNPage() {
       })
       .catch(() => toast({ title: "Warning", description: "Could not load reference data.", variant: "destructive" }))
       .finally(() => setRefLoading(false));
-  }, []);
+  }, [toast]);
 
   /* ── field helpers ── */
   const setField = (key, val) => {

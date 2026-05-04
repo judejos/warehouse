@@ -57,7 +57,7 @@ function DispatchDialog({ onClose, onSuccess }) {
       .then(r => setProducts(toArray(r)))
       .catch(() => toast({ title: "Error", description: "Failed to load products.", variant: "destructive" }))
       .finally(() => setLoadingProd(false));
-  }, []);
+  }, [toast]);
 
   const filteredProducts = products.filter(p =>
     !search ||
