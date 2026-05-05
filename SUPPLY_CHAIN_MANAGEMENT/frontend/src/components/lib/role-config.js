@@ -19,7 +19,7 @@ const allModules = {
   dashboard:        { title: "Dashboard",        url: "/dashboard",         icon: LayoutDashboard },
   products:         { title: "Product",           url: "/products",          icon: Package },
   inventory:        { title: "Inventory",         url: "/inventory",         icon: Package },
-  purchaseRequests: { title: "PR",                url: "/purchase-requests", icon: FileText },
+  purchaseRequests: { title: "Purchase Requests", url: "/purchase-requests", icon: FileText },
   asn:              { title: "ASN",               url: "/asn",               icon: Truck },
   grn:              { title: "GRN",               url: "/grn",               icon: ClipboardCheck },
   qualityCheck:     { title: "QC",                url: "/quality-check",     icon: CheckSquare },
@@ -37,19 +37,19 @@ const roleModules = {
   // Full access
   admin: [
     "dashboard",
+    "users",
     "purchaseRequests",
     "asn",
     "grn",
-    "vendors",
-    "suppliers",
     "qualityCheck",
     "scanner",
+    "vendors",
+    "suppliers",
     "inventory",
     "products",
     "outbound",
     "warehouses",
     "finance",
-    "users",
     "settings"
   ],
   // Operational managers

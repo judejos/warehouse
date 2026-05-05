@@ -7,9 +7,10 @@ import {
 } from "../components/ui/table";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Textarea } from "../components/ui/textarea";
 import {
   Search, Loader2, RefreshCw, Plus, ScanLine, ChevronDown, ChevronUp,
-  CheckCircle, Package,
+  CheckCircle, Package, Camera, X, Image as ImageIcon
 } from "lucide-react";
 import { useAuth } from "../components/lib/auth-context";
 import { useToast } from "../components/ui/use-toast";
@@ -724,6 +725,9 @@ function QCItemRow({ item, grnId, onSaved }) {
   const { toast } = useToast();
   const [accepted, setAccepted] = useState(item.accepted_quantity || 0);
   const [rejected, setRejected] = useState(item.rejected_quantity || 0);
+  const [rejectionReason, setRejectionReason] = useState(item.rejection_reason || "Defect");
+  const [rejectionNotes, setRejectionNotes] = useState(item.rejection_notes || "");
+  const [rejectionImages, setRejectionImages] = useState(item.rejection_images || []);
   const [saving, setSaving]     = useState(false);
 
   const received    = item.received_quantity || 0;
@@ -731,14 +735,42 @@ function QCItemRow({ item, grnId, onSaved }) {
   const isOver      = total > received;
   const isCompleted = item.qc_status === "Completed";
 
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    if (rejectionImages.length + files.length > 5) {
+      toast({ title: "Limit reached", description: "Maximum 5 images allowed.", variant: "destructive" });
+      return;
+    }
+
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setRejectionImages(prev => [...prev, reader.result]);
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeImage = (index) => {
+    setRejectionImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSave = async () => {
     if (isOver) return;
     setSaving(true);
     try {
-      await qcUpdateGRNItem(item.grn_item_id, {
+      const payload = {
         accepted_quantity: accepted,
         rejected_quantity: rejected,
-      });
+      };
+
+      if (rejected > 0) {
+        payload.rejection_reason = rejectionReason;
+        payload.rejection_notes = rejectionNotes;
+        payload.rejection_images = rejectionImages;
+      }
+
+      await qcUpdateGRNItem(item.grn_item_id, payload);
       toast({ title: "Saved", description: `${item.product_name || item.snapshot_product_name} — QC recorded.` });
       await onSaved();
     } catch (err) {
@@ -749,79 +781,176 @@ function QCItemRow({ item, grnId, onSaved }) {
   };
 
   return (
-    <div className={`grid grid-cols-[1fr_auto] gap-4 px-5 py-4 ${isCompleted ? "bg-green-50/40" : ""}`}>
-      {/* product info */}
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <p className="text-sm font-semibold text-gray-800 truncate">
-            {item.snapshot_product_name || item.product_name}
-          </p>
-          {isCompleted && (
-            <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-semibold">
-              <CheckCircle className="w-3 h-3" /> Done
+    <div className={`px-5 py-4 ${isCompleted ? "bg-green-50/40" : ""}`}>
+      <div className="grid grid-cols-[1fr_auto] gap-4">
+        {/* product info */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <p className="text-sm font-semibold text-gray-800 truncate">
+              {item.snapshot_product_name || item.product_name}
+            </p>
+            {isCompleted && (
+              <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-semibold">
+                <CheckCircle className="w-3 h-3" /> Done
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] font-mono text-gray-400">{item.grn_item_id}</p>
+          <div className="flex gap-4 mt-2">
+            <span className="text-xs text-gray-500">
+              Received: <span className="font-semibold text-gray-800">{received}</span>
             </span>
-          )}
+            {isCompleted && (
+              <>
+                <span className="text-xs text-emerald-600">
+                  Accepted: <span className="font-semibold">{item.accepted_quantity}</span>
+                </span>
+                <span className="text-xs text-red-500">
+                  Rejected: <span className="font-semibold">{item.rejected_quantity}</span>
+                </span>
+              </>
+            )}
+          </div>
         </div>
-        <p className="text-[10px] font-mono text-gray-400">{item.grn_item_id}</p>
-        <div className="flex gap-4 mt-2">
-          <span className="text-xs text-gray-500">
-            Received: <span className="font-semibold text-gray-800">{received}</span>
-          </span>
-          {isCompleted && (
-            <>
-              <span className="text-xs text-emerald-600">
-                Accepted: <span className="font-semibold">{item.accepted_quantity}</span>
-              </span>
-              <span className="text-xs text-red-500">
-                Rejected: <span className="font-semibold">{item.rejected_quantity}</span>
-              </span>
-            </>
-          )}
-        </div>
-      </div>
 
-      {/* QC inputs */}
-      {!isCompleted ? (
-        <div className="flex items-start gap-2 shrink-0">
-          <div className="grid gap-1">
-            <Label className="text-[10px] text-gray-400 text-center">Accept</Label>
-            <Input
-              type="number" min="0" max={received}
-              value={accepted}
-              onChange={e => setAccepted(parseInt(e.target.value) || 0)}
-              className={`w-20 h-8 text-sm text-center tabular-nums border-gray-300 ${isOver ? "border-red-400" : ""}`}
-            />
-          </div>
-          <div className="grid gap-1">
-            <Label className="text-[10px] text-gray-400 text-center">Reject</Label>
-            <Input
-              type="number" min="0" max={received}
-              value={rejected}
-              onChange={e => setRejected(parseInt(e.target.value) || 0)}
-              className={`w-20 h-8 text-sm text-center tabular-nums border-gray-300 ${isOver ? "border-red-400" : ""}`}
-            />
-          </div>
-          <div className="grid gap-1">
-            <Label className="text-[10px] text-transparent">-</Label>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving || isOver || (accepted + rejected === 0)}
-              className="h-8 w-16 bg-[#1E3A8A] hover:bg-[#162d6e] text-xs"
-            >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
-            </Button>
-          </div>
-          {isOver && (
+        {/* QC inputs */}
+        {!isCompleted ? (
+          <div className="flex items-start gap-2 shrink-0">
+            <div className="grid gap-1">
+              <Label className="text-[10px] text-gray-400 text-center">Accept</Label>
+              <Input
+                type="number" min="0" max={received}
+                value={accepted}
+                onChange={e => setAccepted(parseInt(e.target.value) || 0)}
+                className={`w-20 h-8 text-sm text-center tabular-nums border-gray-300 ${isOver ? "border-red-400" : ""}`}
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-[10px] text-gray-400 text-center">Reject</Label>
+              <Input
+                type="number" min="0" max={received}
+                value={rejected}
+                onChange={e => setRejected(parseInt(e.target.value) || 0)}
+                className={`w-20 h-8 text-sm text-center tabular-nums border-gray-300 ${isOver ? "border-red-400" : ""}`}
+              />
+            </div>
             <div className="grid gap-1">
               <Label className="text-[10px] text-transparent">-</Label>
-              <p className="h-8 flex items-center text-[10px] text-red-500 font-medium">Exceeds {received}</p>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saving || isOver || (accepted + rejected === 0)}
+                className="h-8 w-16 bg-[#1E3A8A] hover:bg-[#162d6e] text-xs"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+            {isOver && (
+              <div className="grid gap-1">
+                <Label className="text-[10px] text-transparent">-</Label>
+                <p className="h-8 flex items-center text-[10px] text-red-500 font-medium">Exceeds {received}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center">
+            <CheckCircle className="w-5 h-5 text-emerald-500" />
+          </div>
+        )}
+      </div>
+
+      {/* Rejection Details Section */}
+      {!isCompleted && rejected > 0 && (
+        <div className="mt-4 p-4 border border-red-100 bg-red-50/30 rounded-lg animate-in fade-in slide-in-from-top-2">
+          <p className="text-xs font-bold text-red-700 uppercase tracking-wider mb-3">Rejection Details</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-gray-600">Primary Reason</Label>
+                <Select value={rejectionReason} onValueChange={setRejectionReason}>
+                  <SelectTrigger className="h-8 text-xs bg-white border-gray-200">
+                    <SelectValue placeholder="Select reason" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Defect">Defect</SelectItem>
+                    <SelectItem value="Damaged">Damaged</SelectItem>
+                    <SelectItem value="Expired">Expired</SelectItem>
+                    <SelectItem value="Wrong Item">Wrong Item</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="grid gap-1.5">
+                <Label className="text-xs text-gray-600">Internal Notes</Label>
+                <Textarea 
+                  placeholder="Describe the issue in detail..."
+                  className="text-xs bg-white border-gray-200 min-h-[80px]"
+                  value={rejectionNotes}
+                  onChange={e => setRejectionNotes(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-xs text-gray-600">Photo Evidence ({rejectionImages.length}/5)</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {rejectionImages.map((img, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-md overflow-hidden border border-gray-200 bg-white group">
+                    <img src={img} alt="Evidence" className="w-full h-full object-cover" />
+                    <button 
+                      onClick={() => removeImage(idx)}
+                      className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {rejectionImages.length < 5 && (
+                  <label className="aspect-square flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-md bg-white hover:bg-gray-50 cursor-pointer transition-colors">
+                    <Camera className="w-5 h-5 text-gray-400 mb-1" />
+                    <span className="text-[10px] text-gray-400 font-medium">Add Photo</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      multiple 
+                      className="hidden" 
+                      onChange={handleImageUpload}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Display Saved Rejection Details for Completed Items */}
+      {isCompleted && item.rejected_quantity > 0 && (
+        <div className="mt-3 p-3 bg-gray-50 border border-gray-100 rounded-md">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold uppercase">
+              {item.rejection_reason || "Rejected"}
+            </span>
+            {item.rejection_notes && (
+              <p className="text-xs text-gray-600 italic">"{item.rejection_notes}"</p>
+            )}
+          </div>
+          {item.rejection_images && item.rejection_images.length > 0 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {item.rejection_images.map((img, idx) => (
+                <div key={idx} className="shrink-0 w-12 h-12 rounded border border-gray-200 overflow-hidden bg-white">
+                  <img 
+                    src={img} 
+                    alt="Rejection evidence" 
+                    className="w-full h-full object-cover cursor-zoom-in"
+                    onClick={() => window.open(img, '_blank')}
+                  />
+                </div>
+              ))}
             </div>
           )}
-        </div>
-      ) : (
-        <div className="flex items-center">
-          <CheckCircle className="w-5 h-5 text-emerald-500" />
         </div>
       )}
     </div>

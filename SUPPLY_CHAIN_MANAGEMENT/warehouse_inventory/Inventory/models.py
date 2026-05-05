@@ -29,6 +29,7 @@ Key changes vs original:
 import math
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 
 # ─────────────────────────────────────────────
@@ -257,9 +258,11 @@ class Inventory(models.Model):
     def save(self, *args, **kwargs):
         if not self.inventory_id:
             with transaction.atomic():
-                last   = Inventory.objects.select_for_update().order_by("-last_update").first()
+                last   = Inventory.objects.select_for_update().order_by("-inventory_id").first()
                 new_id = (int(last.inventory_id[3:]) + 1) if last else 1
                 self.inventory_id = f"INV{new_id:04d}"
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -374,7 +377,7 @@ class ASN(models.Model):
     asn_id                = models.CharField(max_length=10, primary_key=True, editable=False)
     po                    = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE,
                                                related_name="asns")
-    asn_number            = models.CharField(max_length=50, unique=True)
+    asn_number            = models.CharField(max_length=50, unique=True, blank=True)
     vendor                = models.ForeignKey("vendors.Vendor", on_delete=models.CASCADE,
                                                related_name="asns")
     shipment_date         = models.DateField()
@@ -387,9 +390,18 @@ class ASN(models.Model):
     def save(self, *args, **kwargs):
         if not self.asn_id:
             with transaction.atomic():
-                last   = ASN.objects.select_for_update().order_by("-created_at").first()
+                # Sort by PK to ensure strict sequence
+                last   = ASN.objects.select_for_update().order_by("-asn_id").first()
                 new_id = (int(last.asn_id[3:]) + 1) if last else 1
                 self.asn_id = f"ASN{new_id:04d}"
+                
+                # Auto-generate asn_number if missing
+                if not self.asn_number:
+                    year = timezone.now().year
+                    self.asn_number = f"ASN-{year}-{new_id:04d}"
+                
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -408,9 +420,13 @@ class ASNItem(models.Model):
     def save(self, *args, **kwargs):
         if not self.asn_item_id:
             with transaction.atomic():
-                last   = ASNItem.objects.select_for_update().order_by("-created_at").first()
+                # Sort by PK to ensure strict sequence
+                last   = ASNItem.objects.select_for_update().order_by("-asn_item_id").first()
+                # ASN-ITM-001 -> split by '-' is ['ASN', 'ITM', '001']
                 new_id = (int(last.asn_item_id.split("-")[-1]) + 1) if last else 1
                 self.asn_item_id = f"ASN-ITM-{new_id:03d}"
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
 
@@ -471,6 +487,14 @@ class GRNItem(models.Model):
     """
     QC_STATUS_CHOICES = [("Pending", "Pending"), ("Completed", "Completed")]
 
+    REJECTION_REASON_CHOICES = [
+        ("Defect",     "Defect"),
+        ("Damaged",    "Damaged"),
+        ("Expired",    "Expired"),
+        ("Wrong Item", "Wrong Item"),
+        ("Other",      "Other"),
+    ]
+
     grn_item_id = models.CharField(primary_key=True, max_length=15, editable=False)
     grn         = models.ForeignKey(GRN, on_delete=models.CASCADE, related_name="items")
     product     = models.ForeignKey("products.Product", on_delete=models.CASCADE,
@@ -483,6 +507,21 @@ class GRNItem(models.Model):
     received_quantity = models.IntegerField(help_text="Base units")
     accepted_quantity = models.IntegerField(default=0)
     rejected_quantity = models.IntegerField(default=0)
+
+    # Rejection details (filled when rejected_quantity > 0)
+    rejection_reason = models.CharField(
+        max_length=20, choices=REJECTION_REASON_CHOICES,
+        blank=True, default="",
+        help_text="Primary reason for rejection."
+    )
+    rejection_notes  = models.TextField(
+        blank=True, default="",
+        help_text="Free-text description of the defect / damage."
+    )
+    rejection_images = models.JSONField(
+        default=list, blank=True,
+        help_text="List of base64-encoded PNG/JPEG strings (up to 5 images)."
+    )
 
     # Product snapshot at receipt time
     snapshot_product_name      = models.CharField(max_length=255)

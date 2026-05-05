@@ -46,7 +46,7 @@ const EMPTY_ITEM = { product: "", expected_quantity: "" };
 
 /* ── Field-level validators ── */
 const validators = {
-  asn_number:            v => v.trim() ? null : "ASN Number is required.",
+  asn_number:            v => null, // Optional: backend auto-generates if empty
   po:                    v => v        ? null : "Purchase Order is required.",
   vendor:                v => v        ? null : "Vendor is required.",
   shipment_date:         v => v        ? null : "Shipment Date is required.",
@@ -254,13 +254,12 @@ export default function CreateASNPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-
                 {/* ASN Number */}
                 <div className="col-span-2">
-                  <Label className="text-xs font-semibold">ASN Number<Req /></Label>
+                  <Label className="text-xs font-semibold">ASN Number <span className="text-[10px] text-gray-400 font-normal">(Optional — will auto-generate if blank)</span></Label>
                   <Input
                     id="asn_number"
-                    placeholder="e.g. ASN-2024-001"
+                    placeholder="Leave blank to auto-generate (e.g. ASN-2026-0001)"
                     value={form.asn_number}
                     onChange={e => setField("asn_number", e.target.value)}
                     className={`mt-1 h-9 ${touched.asn_number && errors.asn_number ? "border-red-400" : ""}`}

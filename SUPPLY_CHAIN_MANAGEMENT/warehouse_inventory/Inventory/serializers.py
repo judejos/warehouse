@@ -376,13 +376,14 @@ class GRNItemCreateSerializer(serializers.ModelSerializer):
 
 
 class GRNItemQCSerializer(serializers.ModelSerializer):
-    """QC fills accepted/rejected — everything else read-only."""
+    """QC fills accepted/rejected + optional rejection details. Everything else read-only."""
     class Meta:
         model  = GRNItem
         fields = [
             "grn_item_id", "grn", "product",
             "received_cartons", "received_quantity",
             "accepted_quantity", "rejected_quantity", "qc_status",
+            "rejection_reason", "rejection_notes", "rejection_images",
         ]
         read_only_fields = [
             "grn_item_id", "grn", "product",
@@ -399,6 +400,12 @@ class GRNItemQCSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"accepted ({accepted}) + rejected ({rejected}) > received ({received})."
             )
+        # Validate rejection_images: must be a list, max 5 items
+        images = data.get("rejection_images", [])
+        if not isinstance(images, list):
+            raise serializers.ValidationError({"rejection_images": "Must be a list of base64 strings."})
+        if len(images) > 5:
+            raise serializers.ValidationError({"rejection_images": "Maximum 5 images allowed."})
         return data
 
 
@@ -417,6 +424,7 @@ class GRNItemReadSerializer(serializers.ModelSerializer):
             "batch", "batch_number", "vendor_name",
             "received_cartons", "received_quantity",
             "accepted_quantity", "rejected_quantity",
+            "rejection_reason", "rejection_notes", "rejection_images",
             "snapshot_product_name", "snapshot_barcode",
             "snapshot_package_type", "snapshot_base_unit",
             "snapshot_purchase_unit", "snapshot_conversion_factor",

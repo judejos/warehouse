@@ -1334,7 +1334,8 @@ class SupervisorGRNListView(APIView):
 class QCUpdateGRNItem(APIView):
     """
     PUT /api/inventory/grn-items/<pk>/qc/
-    QC staff fills in accepted_quantity and rejected_quantity.
+    QC staff fills in accepted_quantity, rejected_quantity, and optional
+    rejection_reason, rejection_notes, rejection_images (list of base64 strings).
     """
     permission_classes = [IsAuthenticated]
 
@@ -1347,6 +1348,12 @@ class QCUpdateGRNItem(APIView):
             )
         s = GRNItemQCSerializer(item, data=request.data, partial=True)
         if s.is_valid():
+            # Clear rejection fields if no units are being rejected
+            rejected = s.validated_data.get("rejected_quantity", item.rejected_quantity)
+            if rejected == 0:
+                s.validated_data["rejection_reason"] = ""
+                s.validated_data["rejection_notes"]  = ""
+                s.validated_data["rejection_images"] = []
             s.save(qc_status="Completed")
             return Response({"message": "QC updated.", "data": s.data})
         return Response(s.errors, status=status.HTTP_400_BAD_REQUEST)

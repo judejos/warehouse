@@ -425,6 +425,9 @@ export const getQCPendingGRNs = () =>
   apiRequest('/inventory/grn/qc/pending/', 'GET');
 export const qcUpdateGRNItem = (id, data) => 
   apiRequest(`/inventory/grn-items/${id}/qc/`, 'PUT', data);
+
+export const qcUpdateGRNItemWithRejection = (id, data) => 
+  apiRequest(`/inventory/grn-items/${id}/qc/`, 'PUT', data);
 export const qcApproveGRN = (grnId) => 
   apiRequest(`/inventory/grn/${grnId}/qc-approve/`, 'POST');
 
