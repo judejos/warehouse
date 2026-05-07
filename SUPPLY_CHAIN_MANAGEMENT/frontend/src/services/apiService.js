@@ -94,7 +94,14 @@ export const apiRequest = async (endpoint, method = 'GET', data = null) => {
       throw new Error('Session expired. Please log in again.');
     }
 
-    const result = await response.json();
+    let result = {};
+    const text = await response.text();
+    try {
+      result = text ? JSON.parse(text) : {};
+    } catch (e) {
+      console.warn("Failed to parse JSON response:", text);
+      result = { error: text || "Invalid server response" };
+    }
 
     if (!response.ok) {
       const errorMsg = result.error || result.detail || (typeof result === 'object' ? JSON.stringify(result) : 'Request failed');
@@ -477,3 +484,10 @@ export const listInventory = () => listInventoryRows();
 // Vendor Agreement Aliases
 export const uploadSmartVendorAgreement = (data) => 
   apiRequest('/vendors/upload-agreement/', 'POST', data);
+
+/* ── REJECTIONS ────────────────────────────────────────────────────────── */
+export const listRejections = () =>
+  apiRequest('/inventory/rejections/', 'GET');
+
+export const confirmRejection = (itemId) =>
+  apiRequest(`/inventory/rejections/${itemId}/confirm/`, 'POST');

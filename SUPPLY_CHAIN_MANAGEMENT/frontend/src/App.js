@@ -35,6 +35,7 @@ import ForceChangePasswordPage from "./pages/auth/ForceChangePasswordPage";
 import BarcodeScannerPage from "./pages/Barcodescannerpage";
 import CreateASNPage     from "./pages/CreateASNPage";
 import NotificationsPage from "./pages/NotificationsPage";
+import RejectionDetailsPage from "./pages/RejectionDetailsPage";
 const queryClient = new QueryClient();
 
 /* ── Redirect unauthenticated users to login ── */
@@ -102,6 +103,7 @@ const App = () => (
               <Route path="/asn"               element={<ASNPage />} />
               <Route path="/asn/create"        element={<CreateASNPage />} />
               <Route path="/grn"               element={<GRNPage />} />
+              <Route path="/rejections"        element={<RoleGuard allowedRoles={["admin","manager","supervisor"]}><RejectionDetailsPage /></RoleGuard>} />
               <Route path="/outbound"          element={<OutboundPage />} />
               <Route path="/barcode-scanner" element={<BarcodeScannerPage />} />
               

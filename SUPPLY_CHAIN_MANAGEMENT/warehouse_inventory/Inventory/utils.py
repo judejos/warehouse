@@ -480,6 +480,9 @@ def generate_putaway_plans(grn):
 def lookup_product_by_barcode(barcode: str):
     """Returns the Product instance matching barcode, or None."""
     from products.models import Product
+    if not barcode:
+        return None
+    barcode = str(barcode).strip()
     try:
         return Product.objects.select_related("zone", "vendor").get(barcode=barcode)
     except Product.DoesNotExist:

@@ -70,6 +70,8 @@ from .views import (
     SupervisorGRNListView,
     QCUpdateGRNItem,
     QCApproveGRN,
+    ListRejectedItemsView,
+    ManagerConfirmRejectionView,
     GRNQCPendingListView,
     GRNBarcodeDecodeView,
     GRNListView,
@@ -199,6 +201,10 @@ urlpatterns = [
 
     # QC — static
     path("grn/qc/pending/",                 GRNQCPendingListView.as_view(), name="grn-qc-pending"),
+
+    # Rejections — static
+    path("rejections/",                     ListRejectedItemsView.as_view(),     name="rejection-list"),
+    path("rejections/<str:pk>/confirm/",    ManagerConfirmRejectionView.as_view(), name="rejection-confirm"),
 
     # Barcode decode — static (inventory manager scans GRN/item barcode)
     path("grn/decode-barcode/",             GRNBarcodeDecodeView.as_view(), name="grn-decode-barcode"),

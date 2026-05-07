@@ -1,13 +1,22 @@
-from django.contrib.auth.models import User
-from .models import Notification, Role, UserRole
+from .models import Notification, UserRole
 
 def notify_role(sender, recipient_role_name, notification_type, title, message, redirect_url=None):
     """
-    Backend helper to send a notification to all users of a specific role.
+    Unified helper to create a role-based notification.
+    Handles sender_role resolution automatically.
     """
     try:
+        sender_role_name = "system"
+        if sender:
+            try:
+                ur = UserRole.objects.select_related("role").get(user=sender)
+                sender_role_name = ur.role.name
+            except UserRole.DoesNotExist:
+                sender_role_name = "unknown"
+
         notification = Notification.objects.create(
             sender=sender,
+            sender_role=sender_role_name,
             recipient_role=recipient_role_name,
             notification_type=notification_type,
             title=title,
@@ -16,12 +25,16 @@ def notify_role(sender, recipient_role_name, notification_type, title, message, 
         )
         return notification
     except Exception as e:
-        print(f"Failed to create notification: {e}")
+        print(f"[rbac.utils.notify_role] Failed: {e}")
         return None
 
+
 def get_user_role_name(user):
+    """Returns the role name string or 'unknown'."""
     try:
-        user_role = UserRole.objects.get(user=user)
-        return user_role.role.role_name
-    except UserRole.DoesNotExist:
+        user_role = UserRole.objects.select_related("role").get(user=user)
+        return user_role.role.name
+    except (UserRole.DoesNotExist, AttributeError):
+        return "unknown"
+    except Exception:
         return "unknown"

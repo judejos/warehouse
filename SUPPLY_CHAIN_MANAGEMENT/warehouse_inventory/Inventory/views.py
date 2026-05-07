@@ -32,7 +32,7 @@ from django.db import transaction
 from django.db.models import Count, F, Q, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -1265,14 +1265,19 @@ class SupervisorScanBarcodeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        logger.info(f"Scan attempt: GRN={grn_id}, Barcode={barcode}")
+
+        # 1. Validate GRN exists
+        grn = get_object_or_404(GRN, grn_id=grn_id)
+
+        # 2. Lookup product
         product = lookup_product_by_barcode(barcode)
         if not product:
+            logger.warning(f"Scan failed: Product not found for barcode '{barcode}'")
             return Response(
                 {"error": f"No product found for barcode '{barcode}'."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-
-        grn = get_object_or_404(GRN, grn_id=grn_id)
 
         expected_qty = 0
         if grn.asn:
@@ -1302,7 +1307,8 @@ class SupervisorScanBarcodeView(APIView):
                 "already_added": GRNItem.objects.filter(
                     grn=grn, product=product
                 ).exists(),
-            }
+            },
+            status=status.HTTP_200_OK
         )
 
 
@@ -1320,112 +1326,144 @@ class SupervisorAddGRNItem(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, grn_id):
-        grn = get_object_or_404(GRN, grn_id=grn_id)
-        if grn.status not in ("RECEIVED", "QC_PENDING"):
-            return Response(
-                {"error": "Cannot add items to a GRN that is not in RECEIVED or QC_PENDING status."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        barcode          = (request.data.get("barcode") or "").strip()
-        batch_number     = (request.data.get("batch_number") or "").strip()
-        received_cartons = request.data.get("received_cartons")
-        mfg_date         = request.data.get("manufactured_date")
-        exp_date         = request.data.get("expiry_date")
-
-        if not all([barcode, batch_number, received_cartons]):
-            return Response(
-                {"error": "barcode, batch_number, and received_cartons are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        logger.info(f"Add GRN Item attempt: GRN={grn_id}, Data={request.data}")
         try:
-            received_cartons = int(received_cartons)
-        except (TypeError, ValueError):
+            with transaction.atomic():
+                # 1. Validate GRN
+                grn = get_object_or_404(GRN, grn_id=grn_id)
+                if grn.status not in ("RECEIVED", "QC_PENDING"):
+                    return Response(
+                        {"error": "Cannot add items to a GRN that is not in RECEIVED or QC_PENDING status."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                barcode          = (request.data.get("barcode") or "").strip()
+                batch_number     = (request.data.get("batch_number") or "").strip()
+                received_cartons = request.data.get("received_cartons")
+                mfg_date         = request.data.get("manufactured_date") or None
+                exp_date         = request.data.get("expiry_date") or None
+
+                if mfg_date == "": mfg_date = None
+                if exp_date == "": exp_date = None
+
+                if not all([barcode, batch_number, received_cartons]):
+                    return Response(
+                        {"error": "barcode, batch_number, and received_cartons are required."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                try:
+                    received_cartons = int(received_cartons)
+                except (TypeError, ValueError):
+                    return Response(
+                        {"error": "received_cartons must be an integer."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                if received_cartons <= 0:
+                    return Response(
+                        {"error": "received_cartons must be > 0."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # 2. Lookup product
+                product = lookup_product_by_barcode(barcode)
+                if not product:
+                    return Response(
+                        {"error": f"No product found for barcode '{barcode}'."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+
+                # 3. Prevent Duplicate Creation
+                if GRNItem.objects.filter(grn=grn, product=product).exists():
+                    return Response(
+                        {"error": f"Product '{product.product_name}' has already been added to this GRN."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # 4. Get/Create Batch
+                batch, created = get_or_create_batch(
+                    vendor            = grn.vendor,
+                    product           = product,
+                    batch_number      = batch_number,
+                    manufactured_date = mfg_date,
+                    expiry_date       = exp_date,
+                )
+
+                carton_size       = float(product.conversion_factor) if float(product.conversion_factor) > 0 else 1
+                received_quantity = int(received_cartons * carton_size)
+
+                # 5. Calculate prices
+                cf = float(product.conversion_factor) if product.conversion_factor else 1
+                unit_price = round(float(product.carton_price) / cf, 4) if cf > 0 else float(product.carton_price)
+
+                # 6. Create GRN Item
+                grn_item = GRNItem.objects.create(
+                    grn                        = grn,
+                    product                    = product,
+                    batch                      = batch,
+                    received_cartons           = received_cartons,
+                    received_quantity          = received_quantity,
+                    accepted_quantity          = 0,
+                    rejected_quantity          = 0,
+                    unit_price                 = unit_price,
+                    # total_price auto-calculated in model.save()
+                    snapshot_product_name      = product.product_name,
+                    snapshot_size              = product.size,
+                    snapshot_barcode           = product.barcode,
+                    snapshot_package_type      = product.package_type,
+                    snapshot_base_unit         = product.base_unit,
+                    snapshot_purchase_unit     = product.purchase_unit,
+                    snapshot_conversion_factor = product.conversion_factor,
+                    snapshot_carton_price      = product.carton_price,
+                    snapshot_gst_percent       = product.gst_percent,
+                    snapshot_weight_kg         = product.weight_kg,
+                    snapshot_length_cm         = product.length_cm,
+                    snapshot_width_cm          = product.width_cm,
+                    snapshot_height_cm         = product.height_cm,
+                    snapshot_abc               = product.ABC,
+                    snapshot_xyz               = product.XYZ,
+                    snapshot_ved               = product.VED,
+                    qc_status                  = "Pending",
+                    rejection_confirmed        = False,
+                )
+
+                # 7. Automated Notification
+                notify_role(
+                    sender=request.user,
+                    recipient_role_name="quality_assistant",
+                    notification_type="quality",
+                    title=f"Item Ready for QC: {product.product_name}",
+                    message=f"New item {product.product_name} (Batch: {batch_number}) added to GRN {grn.grn_id}. Inspection required.",
+                    redirect_url="/quality-check"
+                )
+
+                logger.info(f"GRN Item created successfully: ID={grn_item.grn_item_id}")
+                return Response(
+                    {
+                        "message":           "GRN item added.",
+                        "grn_item_id":       grn_item.grn_item_id,
+                        "product_name":      product.product_name,
+                        "size":              product.size,
+                        "batch_number":      batch_number,
+                        "manufactured_date": str(batch.manufactured_date or ""),
+                        "expiry_date":       str(batch.expiry_date or ""),
+                        "batch_created":     created,
+                        "received_cartons":  received_cartons,
+                        "received_quantity": received_quantity,
+                        "unit_price":        unit_price,
+                        "total_price":       grn_item.total_price,
+                        "base_unit":         product.base_unit,
+                        "purchase_unit":     product.purchase_unit,
+                    },
+                    status=status.HTTP_201_CREATED
+                )
+        except Exception as e:
+            logger.exception(f"Error in SupervisorAddGRNItem: {str(e)}")
             return Response(
-                {"error": "received_cartons must be an integer."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        if received_cartons <= 0:
-            return Response(
-                {"error": "received_cartons must be > 0."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        product = lookup_product_by_barcode(barcode)
-        if not product:
-            return Response(
-                {"error": f"No product found for barcode '{barcode}'."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        batch, created = get_or_create_batch(
-            vendor            = grn.vendor,
-            product           = product,
-            batch_number      = batch_number,
-            manufactured_date = mfg_date,
-            expiry_date       = exp_date,
-        )
-
-        carton_size       = float(product.conversion_factor) if float(product.conversion_factor) > 0 else 1
-        received_quantity = int(received_cartons * carton_size)
-
-        grn_item = GRNItem.objects.create(
-            grn                        = grn,
-            product                    = product,
-            batch                      = batch,
-            received_cartons           = received_cartons,
-            received_quantity          = received_quantity,
-            accepted_quantity          = 0,
-            rejected_quantity          = 0,
-            snapshot_product_name      = product.product_name,
-            snapshot_size              = product.size,
-            snapshot_barcode           = product.barcode,
-            snapshot_package_type      = product.package_type,
-            snapshot_base_unit         = product.base_unit,
-            snapshot_purchase_unit     = product.purchase_unit,
-            snapshot_conversion_factor = product.conversion_factor,
-            snapshot_carton_price      = product.carton_price,
-            snapshot_gst_percent       = product.gst_percent,
-            snapshot_weight_kg         = product.weight_kg,
-            snapshot_length_cm         = product.length_cm,
-            snapshot_width_cm          = product.width_cm,
-            snapshot_height_cm         = product.height_cm,
-            snapshot_abc               = product.ABC,
-            snapshot_xyz               = product.XYZ,
-            snapshot_ved               = product.VED,
-            qc_status                  = "Pending",
-        )
-
-        # ── Automated Notification ──
-        notify_role(
-            sender=request.user,
-            recipient_role_name="quality_assistant",
-            notification_type="quality",
-            title=f"Item Ready for QC: {product.product_name}",
-            message=f"New item {product.product_name} (Batch: {batch_number}) added to GRN {grn.grn_id}. Inspection required.",
-            redirect_url="/quality-check"
-        )
-
-        return Response(
-            {
-                "message":           "GRN item added.",
-                "grn_item_id":       grn_item.grn_item_id,
-                "product_name":      product.product_name,
-                "size":              product.size,
-                "batch_number":      batch_number,
-                "manufactured_date": str(batch.manufactured_date or ""),
-                "expiry_date":       str(batch.expiry_date or ""),
-                "batch_created":     created,
-                "received_cartons":  received_cartons,
-                "received_quantity": received_quantity,
-                "base_unit":         product.base_unit,
-                "purchase_unit":     product.purchase_unit,
-            },
-            status=status.HTTP_201_CREATED,
-        )
-
 
 class SupervisorGRNListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -1452,6 +1490,7 @@ class QCUpdateGRNItem(APIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request, pk):
+        print(f"QC Update Data: {request.data}")
         item = get_object_or_404(GRNItem, pk=pk)
         if item.qc_status == "Completed":
             return Response(
@@ -1460,6 +1499,7 @@ class QCUpdateGRNItem(APIView):
             )
         s = GRNItemQCSerializer(item, data=request.data, partial=True)
         if s.is_valid():
+            print(f"Validated Data: {s.validated_data}")
             # Clear rejection fields if no units are being rejected
             rejected = s.validated_data.get("rejected_quantity", item.rejected_quantity)
             if rejected == 0:
@@ -1590,6 +1630,68 @@ class QCApproveGRN(APIView):
                 ],
             }
         )
+
+
+class ListRejectedItemsView(generics.ListAPIView):
+    """
+    GET /api/inventory/rejections/
+    Lists all GRNItems where rejected_quantity > 0.
+    Viewable by: manager, admin, supervisor.
+    """
+    serializer_class = GRNItemReadSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return GRNItem.objects.filter(rejected_quantity__gt=0).order_by("-created_at")
+
+
+class ManagerConfirmRejectionView(APIView):
+    """
+    POST /api/inventory/rejections/<pk>/confirm/
+    Manager confirms the rejection of an item after physical verification.
+    Only allowed for managers.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        # RBAC check: only manager or admin can confirm
+        from rbac.models import UserRole
+        try:
+            ur = UserRole.objects.select_related("role").get(user=request.user)
+            role_name = ur.role.name
+        except UserRole.DoesNotExist:
+            role_name = "unknown"
+
+        if role_name not in ("manager", "admin"):
+            return Response(
+                {"error": "Only Managers or Admins can perform the final rejection action."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        item = get_object_or_404(GRNItem, pk=pk)
+        if item.rejected_quantity <= 0:
+            return Response(
+                {"error": "This item has no rejected quantity to confirm."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if item.rejection_confirmed:
+            return Response(
+                {"error": "This rejection is already confirmed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        item.rejection_confirmed    = True
+        item.rejection_confirmed_at = timezone.now()
+        item.rejection_confirmed_by = request.user
+        item.save(update_fields=["rejection_confirmed", "rejection_confirmed_at", "rejection_confirmed_by"])
+
+        return Response({
+            "message": "Rejection confirmed successfully.",
+            "confirmed_at": item.rejection_confirmed_at,
+            "confirmed_by": request.user.username
+        })
+
 
 class GRNQCPendingListView(APIView):
     permission_classes = [IsAuthenticated]

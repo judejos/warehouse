@@ -354,6 +354,7 @@ class GRNItemCreateSerializer(serializers.ModelSerializer):
             "snapshot_weight_kg",
             "snapshot_length_cm", "snapshot_width_cm", "snapshot_height_cm",
             "snapshot_abc", "snapshot_xyz", "snapshot_ved",
+            "unit_price", "total_price",
             "qc_status",
         ]
         read_only_fields = [
@@ -433,6 +434,8 @@ class GRNItemReadSerializer(serializers.ModelSerializer):
             "snapshot_length_cm", "snapshot_width_cm", "snapshot_height_cm",
             "snapshot_volume_cm3",
             "snapshot_abc", "snapshot_xyz", "snapshot_ved",
+            "unit_price", "total_price",
+            "rejection_confirmed", "rejection_confirmed_at", "rejection_confirmed_by",
             "qc_status", "created_at",
         ]
 

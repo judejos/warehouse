@@ -28,6 +28,7 @@ Key changes vs original:
 
 import math
 from django.db import models, transaction
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -522,6 +523,14 @@ class GRNItem(models.Model):
         default=list, blank=True,
         help_text="List of base64-encoded PNG/JPEG strings (up to 5 images)."
     )
+    rejection_confirmed    = models.BooleanField(default=False)
+    rejection_confirmed_at = models.DateTimeField(null=True, blank=True)
+    rejection_confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="rejections_confirmed"
+    )
 
     # Product snapshot at receipt time
     snapshot_product_name      = models.CharField(max_length=255)
@@ -540,6 +549,10 @@ class GRNItem(models.Model):
     snapshot_abc               = models.CharField(max_length=1, blank=True, default="")
     snapshot_xyz               = models.CharField(max_length=1, blank=True, default="")
     snapshot_ved               = models.CharField(max_length=1, blank=True, default="")
+
+    # Pricing
+    unit_price  = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     # NEW (Option B): per-item barcode generated after QC approval
     barcode_image = models.TextField(
@@ -567,6 +580,10 @@ class GRNItem(models.Model):
 
     def save(self, *args, **kwargs):
         self.clean()
+        
+        # Auto-calculate total_price
+        self.total_price = float(self.unit_price) * self.received_quantity
+
         if not self.grn_item_id:
             with transaction.atomic():
                 last   = GRNItem.objects.select_for_update().order_by("-created_at").first()

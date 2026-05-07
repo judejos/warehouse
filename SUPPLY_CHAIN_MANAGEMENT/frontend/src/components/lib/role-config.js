@@ -13,6 +13,7 @@ import {
   DollarSign,
   CheckSquare,
   ScanLine,
+  ShieldAlert,
 } from "lucide-react";
 
 const allModules = {
@@ -30,7 +31,8 @@ const allModules = {
   outbound:         { title: "Outbound Orders",   url: "/outbound",          icon: PackageOpen },
   finance:          { title: "Finance",           url: "/finance",           icon: DollarSign },
   settings:         { title: "Settings",          url: "/settings",          icon: Settings },
-  scanner:          { title: "Barcode Scanner",   url: "/barcode-scanner",   icon: ScanLine }
+  scanner:          { title: "Barcode Scanner",   url: "/barcode-scanner",   icon: ScanLine },
+  rejections:       { title: "QC Rejections",     url: "/rejections",        icon: ShieldAlert },
 };
 
 const roleModules = {
@@ -50,15 +52,16 @@ const roleModules = {
     "outbound",
     "warehouses",
     "finance",
+    "rejections",
     "settings"
   ],
   // Operational managers
   manager: [
-    "dashboard", "purchaseRequests", "asn", "outbound", "vendors", "suppliers", "products", "inventory"
+    "dashboard", "purchaseRequests", "asn", "outbound", "rejections", "vendors", "suppliers", "products", "inventory"
   ],
   // Warehouse supervisor
   supervisor: [
-    "dashboard", "asn", "grn", "inventory"
+    "dashboard", "asn", "grn", "rejections", "inventory"
   ],
   // QC roles
   quality_checker: [

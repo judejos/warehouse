@@ -344,19 +344,31 @@ function AddItemsMode({ user }) {
   }, []);
 
   const handleBarcode = useCallback(async (barcode) => {
-    if (!activeGRN) { setLastScan({ value: "No active GRN — select one first", type: "error" }); return; }
-    setScanning(true); setScanResult(null);
+    if (!activeGRN) {
+      toast({ title: "No GRN Selected", description: "Select an active GRN first.", variant: "destructive" });
+      setLastScan({ value: "No active GRN", type: "error" });
+      return;
+    }
+    setScanning(true);
+    setScanResult(null);
     setLastScan({ value: barcode, type: "ok" });
     try {
       const res = await supervisorScanBarcode(activeGRN.grn_id, { barcode });
       setScanResult(res);
       setAddForm({ batch_number: "", received_cartons: "1", manufactured_date: "", expiry_date: "" });
-      setPaused(true);
-    } catch {
-      setLastScan({ value: `${barcode} — not found`, type: "error" });
+      setPaused(true); // Stop scanning while filling form
+      toast({ title: "Product Found", description: res.product_name });
+    } catch (err) {
+      console.error("Scan error:", err);
+      setLastScan({ value: `${barcode} — Not Found`, type: "error" });
       setScanResult(null);
-    } finally { setScanning(false); }
-  }, [activeGRN]);
+      toast({ title: "Scan Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setScanning(false);
+      // Ensure input stays focused for next scan if not paused
+      if (!paused) setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [activeGRN, paused, toast]);
 
   const inputRef = useScannerInput(handleBarcode, paused);
 
@@ -507,7 +519,9 @@ function PutawayMode() {
   const [qtyOverrides, setQtyOverrides] = useState({});
 
   const handleBarcode = useCallback(async (barcode) => {
-    setDecoding(true); setLastScan({ value: barcode, type: "ok" }); setResult(null);
+    setDecoding(true);
+    setLastScan({ value: barcode, type: "ok" });
+    setResult(null);
     try {
       const res = await decodeGRNBarcode({ barcode_value: barcode });
       setResult(res);
@@ -515,10 +529,17 @@ function PutawayMode() {
       const init = {};
       for (const p of plans) init[p.plan_id] = String(p.planned_quantity);
       setQtyOverrides(init);
+      toast({ title: "Barcode Decoded", description: `Found ${plans.length} plan(s).` });
     } catch (err) {
+      console.error("Decode error:", err);
       setLastScan({ value: `${barcode} — ${err.message}`, type: "error" });
-    } finally { setDecoding(false); }
-  }, []);
+      toast({ title: "Decode Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setDecoding(false);
+      // Continuous scanning: refocus immediately
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [toast]);
 
   const inputRef = useScannerInput(handleBarcode, false);
 

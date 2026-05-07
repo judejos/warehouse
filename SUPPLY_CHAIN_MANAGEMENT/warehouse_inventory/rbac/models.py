@@ -114,8 +114,9 @@ class Notification(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="sent_notifications",
+        null=True, blank=True
     )
-    sender_role = models.CharField(max_length=50)
+    sender_role = models.CharField(max_length=50, null=True, blank=True)
 
     # Role-broadcast: all users with this role receive the notification
     recipient_role = models.CharField(max_length=50)
