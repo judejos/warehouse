@@ -18,6 +18,14 @@ from .views import (
     get_csrf_token,
     # JWT
     CustomTokenObtainPairView,
+    # Notifications
+    SendNotificationView,
+    ListNotificationsView,
+    UnreadCountView,
+    MarkReadView,
+    MarkAllReadView,
+    SentNotificationsView,
+    AllowedRecipientsView,
 )
 
 urlpatterns = [
@@ -42,4 +50,13 @@ urlpatterns = [
     path("list-employees/", ListEmployeeView.as_view(), name="list-employees"),
     path("update-user/<str:employee_id>/", UpdateEmployeeView.as_view(), name="update-user"),
     path("delete-user/<str:employee_id>/", DeleteUserView.as_view(), name="delete-user"),
-]
+
+    # ── Notifications ──────────────────────────────────────────────────────────
+    path("notifications/send/",          SendNotificationView.as_view(),    name="notif-send"),
+    path("notifications/",               ListNotificationsView.as_view(),   name="notif-list"),
+    path("notifications/unread-count/",  UnreadCountView.as_view(),         name="notif-unread-count"),
+    path("notifications/mark-read/<int:notification_id>/", MarkReadView.as_view(), name="notif-mark-read"),
+    path("notifications/mark-all-read/", MarkAllReadView.as_view(),         name="notif-mark-all-read"),
+    path("notifications/sent/",          SentNotificationsView.as_view(),   name="notif-sent"),
+    path("notifications/allowed-recipients/", AllowedRecipientsView.as_view(), name="notif-allowed-recipients"),
+]

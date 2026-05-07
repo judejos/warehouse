@@ -83,6 +83,7 @@ from .utils import (
     lookup_product_by_barcode,
     score_vendors_for_product,
 )
+from rbac.utils import notify_role
 
 logger = logging.getLogger(__name__)
 
@@ -801,6 +802,24 @@ class ManualCreatePRView(APIView):
             created_by         = request.user,
         )
 
+        # ── Automated Notification ──
+        notify_role(
+            sender=request.user,
+            recipient_role_name="manager",
+            notification_type="approval",
+            title=f"New Purchase Request: {pr.pr_id}",
+            message=f"Product: {product.product_name} | Qty: {cartons} cartons | Amount: ₹{pr.total_amount}",
+            redirect_url="/purchase-requests"
+        )
+        notify_role(
+            sender=request.user,
+            recipient_role_name="finance_director",
+            notification_type="approval",
+            title=f"PR Awaiting Review: {pr.pr_id}",
+            message=f"Amount: ₹{pr.total_amount}. Manager is reviewing.",
+            redirect_url="/purchase-requests"
+        )
+
         return Response(
             {"message": "Manual PR created.", "pr_id": pr.pr_id},
             status=status.HTTP_201_CREATED,
@@ -905,6 +924,17 @@ class ManagerApprovePR(APIView):
             if pr.total_amount > APPROVAL_THRESHOLD:
                 pr.status = "Finance Pending"
                 pr.save()
+
+                # ── Automated Notification ──
+                notify_role(
+                    sender=request.user,
+                    recipient_role_name="finance_director",
+                    notification_type="approval",
+                    title=f"Approval Required: {pr.pr_id}",
+                    message=f"PR exceeds ₹{APPROVAL_THRESHOLD}. Amount: ₹{pr.total_amount}",
+                    redirect_url="/purchase-requests"
+                )
+
                 return Response(
                     {
                         "message":        "PR routed to Finance Director for approval.",
@@ -918,6 +948,24 @@ class ManagerApprovePR(APIView):
             pr.status = "Approved"
             pr.save()
             po = _create_po_from_pr(pr)
+
+            # ── Automated Notification ──
+            notify_role(
+                sender=request.user,
+                recipient_role_name="inventory_manager",
+                notification_type="task",
+                title=f"PO Created: {po.po_id}",
+                message=f"New Purchase Order for {po.pr.product.product_name}. Prepare for ASN.",
+                redirect_url="/purchase-orders"
+            )
+            notify_role(
+                sender=request.user,
+                recipient_role_name="supervisor",
+                notification_type="task",
+                title=f"Create ASN for PO: {po.po_id}",
+                message=f"PO {po.po_id} has been approved. Please coordinate with the vendor to create the ASN.",
+                redirect_url="/asn"
+            )
 
         send_po_email(po)
         return Response(
@@ -1017,6 +1065,32 @@ class FinanceApprovePR(APIView):
             pr.save()
             po = _create_po_from_pr(pr)
 
+            # ── Automated Notification ──
+            notify_role(
+                sender=request.user,
+                recipient_role_name="manager",
+                notification_type="update",
+                title=f"PR Approved by Finance: {pr.pr_id}",
+                message=f"High-value PR for {pr.product.product_name} has been approved.",
+                redirect_url="/purchase-requests"
+            )
+            notify_role(
+                sender=request.user,
+                recipient_role_name="inventory_manager",
+                notification_type="task",
+                title=f"PO Created: {po.po_id}",
+                message=f"Finance approved PR. PO {po.po_id} generated for {po.pr.product.product_name}.",
+                redirect_url="/purchase-orders"
+            )
+            notify_role(
+                sender=request.user,
+                recipient_role_name="supervisor",
+                notification_type="task",
+                title=f"Create ASN for PO: {po.po_id}",
+                message=f"PO {po.po_id} (Finance Approved) is ready. Please coordinate with the vendor to create the ASN.",
+                redirect_url="/asn"
+            )
+
         send_po_email(po)
         return Response(
             {"message": "Finance approved — PO created.", "pr_id": pr.pr_id, "po_id": po.po_id}
@@ -1058,6 +1132,16 @@ class ASNCreateView(APIView):
         s = ASNSerializer(data=request.data)
         if s.is_valid():
             asn = s.save()
+
+            # ── Automated Notification ──
+            notify_role(
+                sender=request.user,
+                recipient_role_name="supervisor",
+                notification_type="inventory",
+                title=f"New ASN: {asn.asn_id}",
+                message=f"Shipment from {asn.vendor.vendor_name} expected on {asn.expected_arrival_date}.",
+                redirect_url="/asn"
+            )
             return Response(
                 {"message": "ASN created.", "asn_id": asn.asn_id, "data": s.data},
                 status=status.HTTP_201_CREATED,
@@ -1141,6 +1225,24 @@ class SupervisorCreateGRN(APIView):
             vendor       = vendor,
             vendor_name  = vendor.vendor_name,
             vendor_gstin = getattr(vendor, "gstin", "") or "",
+        )
+
+        # ── Automated Notification ──
+        notify_role(
+            sender=request.user,
+            recipient_role_name="quality_assistant",
+            notification_type="quality",
+            title=f"QC Pending: {grn.grn_id}",
+            message=f"GRN received from {grn.vendor_name}. Inspection required.",
+            redirect_url="/quality-check"
+        )
+        notify_role(
+            sender=request.user,
+            recipient_role_name="inventory_manager",
+            notification_type="inventory",
+            title=f"New Arrival: {grn.grn_id}",
+            message=f"Shipment from {grn.vendor_name} has arrived. Awaiting QC before scanning for putaway.",
+            redirect_url="/dashboard"
         )
         return Response(
             {"message": "GRN created.", "grn_id": grn.grn_id},
@@ -1296,6 +1398,16 @@ class SupervisorAddGRNItem(APIView):
             qc_status                  = "Pending",
         )
 
+        # ── Automated Notification ──
+        notify_role(
+            sender=request.user,
+            recipient_role_name="quality_assistant",
+            notification_type="quality",
+            title=f"Item Ready for QC: {product.product_name}",
+            message=f"New item {product.product_name} (Batch: {batch_number}) added to GRN {grn.grn_id}. Inspection required.",
+            redirect_url="/quality-check"
+        )
+
         return Response(
             {
                 "message":           "GRN item added.",
@@ -1416,6 +1528,16 @@ class QCApproveGRN(APIView):
         grn.status         = "PUTAWAY_PENDING"
         grn.qc_verified_by = request.user
         grn.save(update_fields=["barcode_image", "status", "qc_verified_by"])
+
+        # ── Automated Notification ──
+        notify_role(
+            sender=request.user,
+            recipient_role_name="inventory_manager",
+            notification_type="task",
+            title=f"Putaway Scan Required: {grn.grn_id}",
+            message=f"QC completed for {grn.grn_id}. Please use the Barcode Scanner to perform putaway for {len(plans)} items.",
+            redirect_url="/barcode-scanner"
+        )
 
         # Fetch all GRNItems fresh from DB so barcode_image values written
         # by generate_putaway_plans() are reflected (avoids stale in-memory cache).
@@ -1747,6 +1869,16 @@ class ConfirmPutawayPlanView(APIView):
             if all_done:
                 grn.status = "COMPLETED"
                 grn.save(update_fields=["status"])
+
+                # ── Automated Notification ──
+                notify_role(
+                    sender=request.user,
+                    recipient_role_name="manager",
+                    notification_type="update",
+                    title=f"GRN Completed: {grn.grn_id}",
+                    message=f"All items from GRN {grn.grn_id} (PO: {grn.po_id}) have been put away and are now in inventory.",
+                    redirect_url="/dashboard"
+                )
 
         check_reorder(product)
 

@@ -34,6 +34,7 @@ import ForgotPasswordPage    from "./pages/auth/ForgotPasswordPage";
 import ForceChangePasswordPage from "./pages/auth/ForceChangePasswordPage";
 import BarcodeScannerPage from "./pages/Barcodescannerpage";
 import CreateASNPage     from "./pages/CreateASNPage";
+import NotificationsPage from "./pages/NotificationsPage";
 const queryClient = new QueryClient();
 
 /* ── Redirect unauthenticated users to login ── */
@@ -82,6 +83,7 @@ const App = () => (
             >
               {/* ── Universally accessible (all authenticated roles) ── */}
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/products"  element={<ProductsPage />} />
  
               {/* ── Vendors (admin + inventory_manager + manager) ── */}

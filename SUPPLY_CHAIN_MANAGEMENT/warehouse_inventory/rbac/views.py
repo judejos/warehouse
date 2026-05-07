@@ -18,7 +18,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse
 from django.core.mail import send_mail
 
-from .models import Role, UserRole, OTP, LoginLogs
+from .models import Role, UserRole, OTP, LoginLogs, Notification, NotificationRead
 from .services import send_otp_email, generate_random_password
 from .serializers import (
     RegisterSerializer, LoginSerializer,
@@ -561,3 +561,220 @@ class DeleteUserView(APIView):
             {"message": "User deleted successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+# ─────────────────────────────────────────────
+# NOTIFICATION SYSTEM
+# ─────────────────────────────────────────────
+
+# Role permission matrix: who can send to whom
+ROLE_SEND_PERMISSIONS = {
+    "admin":            ["admin", "manager", "supervisor", "inventory_manager", "quality_assistant", "finance_director"],
+    "manager":          ["supervisor", "inventory_manager", "finance_director", "quality_assistant"],
+    "supervisor":       ["manager"],
+    "inventory_manager": ["finance_director", "manager"],
+    "quality_assistant": ["manager", "supervisor"],
+    "finance_director": ["manager", "admin"],
+}
+
+
+def get_sender_role(user):
+    """Return the role name string for this user, or None."""
+    try:
+        return UserRole.objects.select_related("role").get(user=user).role.name
+    except UserRole.DoesNotExist:
+        return None
+
+
+class SendNotificationView(APIView):
+    """POST — Any authenticated user can send a notification to allowed roles."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        sender_role = get_sender_role(request.user)
+        if not sender_role:
+            return Response({"error": "Sender role not found."}, status=400)
+
+        recipient_role = request.data.get("recipient_role", "").strip()
+        notification_type = request.data.get("notification_type", "update").strip()
+        title = request.data.get("title", "").strip()
+        message = request.data.get("message", "").strip()
+        redirect_url = request.data.get("redirect_url", "").strip()
+
+        if not recipient_role or not title or not message:
+            return Response(
+                {"error": "recipient_role, title, and message are required."},
+                status=400,
+            )
+
+        allowed = ROLE_SEND_PERMISSIONS.get(sender_role, [])
+        if recipient_role not in allowed:
+            return Response(
+                {"error": f"Your role ({sender_role}) cannot send notifications to {recipient_role}."},
+                status=403,
+            )
+
+        valid_types = [t[0] for t in Notification.TYPE_CHOICES]
+        if notification_type not in valid_types:
+            notification_type = "update"
+
+        notif = Notification.objects.create(
+            sender=request.user,
+            sender_role=sender_role,
+            recipient_role=recipient_role,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            redirect_url=redirect_url,
+        )
+
+        return Response(
+            {"message": "Notification sent.", "id": notif.id},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ListNotificationsView(APIView):
+    """
+    GET — Returns all notifications visible to the requesting user.
+    A notification is visible if:
+      • recipient_role matches the user's role, OR
+      • recipient (direct) matches the user
+    Attaches an `is_read` field per notification per user.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_role = get_sender_role(request.user)
+        if not user_role:
+            return Response([], status=200)
+
+        from django.db.models import Q
+        notifications = Notification.objects.filter(
+            Q(recipient_role=user_role) | Q(recipient=request.user)
+        ).exclude(
+            sender=request.user  # don't show your own outgoing to yourself
+        ).order_by("-created_at")[:100]
+
+        read_ids = set(
+            NotificationRead.objects
+            .filter(user=request.user, notification__in=notifications)
+            .values_list("notification_id", flat=True)
+        )
+
+        data = []
+        for n in notifications:
+            data.append({
+                "id":                n.id,
+                "sender_name":      n.sender.get_full_name() or n.sender.username,
+                "sender_role":      n.sender_role,
+                "recipient_role":   n.recipient_role,
+                "notification_type": n.notification_type,
+                "title":            n.title,
+                "message":          n.message,
+                "redirect_url":     n.redirect_url,
+                "created_at":       n.created_at.isoformat(),
+                "is_read":          n.id in read_ids,
+            })
+
+        return Response(data, status=200)
+
+
+class UnreadCountView(APIView):
+    """GET — Returns {count: N} for the bell badge."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user_role = get_sender_role(request.user)
+        if not user_role:
+            return Response({"count": 0})
+
+        from django.db.models import Q
+        total = Notification.objects.filter(
+            Q(recipient_role=user_role) | Q(recipient=request.user)
+        ).exclude(sender=request.user).count()
+
+        read_count = NotificationRead.objects.filter(
+            user=request.user,
+            notification__in=Notification.objects.filter(
+                Q(recipient_role=user_role) | Q(recipient=request.user)
+            ).exclude(sender=request.user),
+        ).count()
+
+        return Response({"count": max(0, total - read_count)}, status=200)
+
+
+class MarkReadView(APIView):
+    """POST {id} — Mark a single notification as read for this user."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, notification_id):
+        try:
+            notif = Notification.objects.get(id=notification_id)
+        except Notification.DoesNotExist:
+            return Response({"error": "Notification not found."}, status=404)
+
+        NotificationRead.objects.get_or_create(notification=notif, user=request.user)
+        return Response({"message": "Marked as read."}, status=200)
+
+
+class MarkAllReadView(APIView):
+    """POST — Mark all visible notifications as read for this user."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user_role = get_sender_role(request.user)
+        if not user_role:
+            return Response({"message": "Done."}, status=200)
+
+        from django.db.models import Q
+        notifications = Notification.objects.filter(
+            Q(recipient_role=user_role) | Q(recipient=request.user)
+        ).exclude(sender=request.user)
+
+        bulk = []
+        already_read = set(
+            NotificationRead.objects
+            .filter(user=request.user, notification__in=notifications)
+            .values_list("notification_id", flat=True)
+        )
+        for n in notifications:
+            if n.id not in already_read:
+                bulk.append(NotificationRead(notification=n, user=request.user))
+
+        NotificationRead.objects.bulk_create(bulk, ignore_conflicts=True)
+        return Response({"message": "All marked as read."}, status=200)
+
+
+class SentNotificationsView(APIView):
+    """GET — Returns notifications sent BY the requesting user (outbox)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        notifications = Notification.objects.filter(
+            sender=request.user
+        ).order_by("-created_at")[:100]
+
+        data = [
+            {
+                "id":               n.id,
+                "recipient_role":   n.recipient_role,
+                "notification_type": n.notification_type,
+                "title":            n.title,
+                "message":          n.message,
+                "redirect_url":     n.redirect_url,
+                "created_at":       n.created_at.isoformat(),
+            }
+            for n in notifications
+        ]
+        return Response(data, status=200)
+
+
+class AllowedRecipientsView(APIView):
+    """GET — Returns the list of roles this user is allowed to notify."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sender_role = get_sender_role(request.user)
+        allowed = ROLE_SEND_PERMISSIONS.get(sender_role, [])
+        return Response({"allowed_roles": allowed, "sender_role": sender_role}, status=200)

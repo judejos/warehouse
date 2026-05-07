@@ -2,8 +2,10 @@ import React, { useState, useRef, useEffect } from "react";
 import { SidebarProvider, SidebarTrigger } from "../components/ui/sidebar";
 import { AppSidebar } from "../components/AppSidebar";
 import { useAuth } from "../components/lib/auth-context";
-import { Bell, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { Outlet, useLocation } from "react-router-dom";
+import NotificationBell from "./NotificationBell";
+
 
 /* First letter of the role string, upper-cased.
    inventory_manager → "I",  admin → "A",  supervisor → "S", etc. */
@@ -76,11 +78,8 @@ export function AppLayout() {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Bell */}
-              <button className="relative p-1.5 rounded-md hover:bg-muted transition-colors">
-                <Bell className="w-4 h-4 text-muted-foreground" />
-                <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-destructive" />
-              </button>
+              {/* Live notification bell */}
+              <NotificationBell />
 
               {/* Avatar dropdown — single letter derived from role */}
               <div className="relative" ref={dropdownRef}>

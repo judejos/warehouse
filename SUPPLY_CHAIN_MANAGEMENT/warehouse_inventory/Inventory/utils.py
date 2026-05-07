@@ -21,6 +21,7 @@ from django.db.models import Sum, Count
 from django.db import transaction
 
 from .models import Inventory, PurchaseRequest, PurchaseOrder, Bin, Batch
+from rbac.utils import notify_role
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +267,16 @@ def check_reorder(product):
             status             = "Pending",
             is_auto_generated  = True,
             created_by         = None,
+        )
+
+        # ── Automated Notification ──
+        notify_role(
+            sender=None,  # System generated
+            recipient_role_name="inventory_manager",
+            notification_type="inventory",
+            title=f"Low Stock Auto-PR: {product.product_name}",
+            message=f"Stock ({total_stock}) below threshold ({threshold}). Auto-PR {pr.pr_id} created for {reorder_cartons} cartons.",
+            redirect_url="/purchase-requests"
         )
 
     logger.info(

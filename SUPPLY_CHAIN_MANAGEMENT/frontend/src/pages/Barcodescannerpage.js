@@ -889,7 +889,7 @@ const MODES = [
     id: "add",
     label: "Add Items to GRN",
     icon: ScanLine,
-    roles: ["supervisor", "admin"],
+    roles: ["supervisor", "admin", "inventory_manager"],
   },
   {
     id: "putaway",
