@@ -218,7 +218,7 @@ class Batch(models.Model):
     def save(self, *args, **kwargs):
         if not self.batch_id:
             with transaction.atomic():
-                last   = Batch.objects.select_for_update().order_by("-created_at").first()
+                last   = Batch.objects.select_for_update().order_by("-batch_id").first()
                 new_id = (int(last.batch_id[3:]) + 1) if last else 1
                 self.batch_id = f"BAT{new_id:04d}"
         super().save(*args, **kwargs)
@@ -310,7 +310,7 @@ class PurchaseRequest(models.Model):
     def save(self, *args, **kwargs):
         if not self.pr_id:
             with transaction.atomic():
-                last   = PurchaseRequest.objects.select_for_update().order_by("created_at").last()
+                last   = PurchaseRequest.objects.select_for_update().order_by("-pr_id").first()
                 new_id = (int(last.pr_id[2:]) + 1) if last else 1
                 self.pr_id = f"PR{new_id:04d}"
         super().save(*args, **kwargs)
@@ -337,7 +337,7 @@ class PurchaseOrder(models.Model):
     def save(self, *args, **kwargs):
         if not self.po_id:
             with transaction.atomic():
-                last   = PurchaseOrder.objects.select_for_update().order_by("created_at").last()
+                last   = PurchaseOrder.objects.select_for_update().order_by("-po_id").first()
                 new_id = (int(last.po_id[2:]) + 1) if last else 1
                 self.po_id = f"PO{new_id:04d}"
         super().save(*args, **kwargs)
@@ -471,7 +471,7 @@ class GRN(models.Model):
     def save(self, *args, **kwargs):
         if not self.grn_id:
             with transaction.atomic():
-                last   = GRN.objects.select_for_update().order_by("-created_at").first()
+                last   = GRN.objects.select_for_update().order_by("-grn_id").first()
                 new_id = (int(last.grn_id.split("-")[-1]) + 1) if last else 1
                 self.grn_id = f"GRN-{new_id:04d}"
         super().save(*args, **kwargs)
@@ -586,7 +586,7 @@ class GRNItem(models.Model):
 
         if not self.grn_item_id:
             with transaction.atomic():
-                last   = GRNItem.objects.select_for_update().order_by("-created_at").first()
+                last   = GRNItem.objects.select_for_update().order_by("-grn_item_id").first()
                 new_id = (int(last.grn_item_id.split("-")[-1]) + 1) if last else 1
                 self.grn_item_id = f"GRN-ITM-{new_id:04d}"
         super().save(*args, **kwargs)
@@ -628,7 +628,7 @@ class PutawayPlan(models.Model):
     def save(self, *args, **kwargs):
         if not self.plan_id:
             with transaction.atomic():
-                last   = PutawayPlan.objects.select_for_update().order_by("-created_at").first()
+                last   = PutawayPlan.objects.select_for_update().order_by("-plan_id").first()
                 new_id = (int(last.plan_id.split("-")[-1]) + 1) if last else 1
                 self.plan_id = f"PAP-{new_id:04d}"
         super().save(*args, **kwargs)

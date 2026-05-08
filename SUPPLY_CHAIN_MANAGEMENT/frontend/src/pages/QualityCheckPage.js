@@ -454,12 +454,19 @@ function InlineQCRow({ item, onSaved }) {
       {/* Display Saved Rejection Details for Completed Items */}
       {isCompleted && item.rejected_quantity > 0 && (
         <div className="mt-3 p-3 bg-gray-50 border border-gray-100 rounded-md">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold uppercase">
-              {item.rejection_reason || "Rejected"}
-            </span>
+          <div className="flex flex-col gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold uppercase">
+                {item.rejection_reason || "Rejected"}
+              </span>
+            </div>
             {item.rejection_notes && (
-              <p className="text-[11px] text-gray-600 italic">"{item.rejection_notes}"</p>
+              <div className="mt-1">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Internal Notes:</span>
+                <p className="text-[11px] text-gray-700 bg-white p-2 rounded border border-gray-200">
+                  {item.rejection_notes}
+                </p>
+              </div>
             )}
           </div>
           {item.rejection_images && item.rejection_images.length > 0 && (

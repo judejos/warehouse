@@ -15,7 +15,7 @@ import {
 import { Button } from "../components/ui/button";
 import { 
   AlertCircle, CheckCircle2, Eye, Loader2, Package, Search, 
-  Trash2, ShieldAlert, ImageIcon, History, ClipboardCheck, X
+  Trash2, ShieldAlert, ImageIcon, History, ClipboardCheck, X, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
 import { useAuth } from "../components/lib/auth-context";
@@ -32,7 +32,7 @@ export default function RejectionDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [confirming, setConfirming] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [selectedImageInfo, setSelectedImageInfo] = useState(null);
 
   const isManager = user?.role === "manager" || user?.role === "admin";
 
@@ -55,6 +55,19 @@ export default function RejectionDetailsPage() {
   useEffect(() => {
     loadRejections();
   }, [loadRejections]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!selectedImageInfo) return;
+      if (e.key === 'ArrowRight') {
+        setSelectedImageInfo(prev => ({ ...prev, index: (prev.index + 1) % prev.images.length }));
+      } else if (e.key === 'ArrowLeft') {
+        setSelectedImageInfo(prev => ({ ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length }));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedImageInfo]);
 
   const handleConfirm = async (itemId) => {
     setConfirming(itemId);
@@ -204,7 +217,12 @@ export default function RejectionDetailsPage() {
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gray-900">{item.rejection_reason || "Unspecified"}</span>
-                        <span className="text-xs text-gray-500 whitespace-pre-wrap">{item.rejection_notes}</span>
+                        {item.rejection_notes && (
+                          <>
+                            <span className="text-[10px] font-bold text-gray-500 mt-1 uppercase tracking-wider">Internal Notes:</span>
+                            <span className="text-xs text-gray-700 whitespace-pre-wrap bg-gray-50 p-1.5 rounded border border-gray-100 mt-0.5">{item.rejection_notes}</span>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -253,12 +271,12 @@ export default function RejectionDetailsPage() {
                                     </p>
                                   </div>
                                   <div>
-                                    <Label className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1 block">Rejection Notes</Label>
+                                    <Label className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1 block">Internal Notes</Label>
                                     <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg leading-relaxed border border-gray-100 min-h-[60px] whitespace-pre-wrap">
                                       {item.rejection_notes ? (
                                         <span className="italic text-gray-600">"{item.rejection_notes}"</span>
                                       ) : (
-                                        <span className="text-gray-400 italic">No detailed notes provided.</span>
+                                        <span className="text-gray-400 italic">No internal notes provided.</span>
                                       )}
                                     </p>
                                   </div>
@@ -294,7 +312,7 @@ export default function RejectionDetailsPage() {
                                       <div 
                                         key={i} 
                                         className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 hover:border-[#1E3A8A] transition-all cursor-zoom-in"
-                                        onClick={() => setSelectedImage(img.startsWith('data:') ? img : `data:image/png;base64,${img}`)}
+                                        onClick={() => setSelectedImageInfo({ images: item.rejection_images, index: i })}
                                       >
                                         <img
                                           src={img.startsWith('data:') ? img : `data:image/png;base64,${img}`}
@@ -366,23 +384,58 @@ export default function RejectionDetailsPage() {
       </Card>
 
       {/* Image Zoom Dialog */}
-      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+      <Dialog open={!!selectedImageInfo} onOpenChange={(open) => { if (!open) setSelectedImageInfo(null); }}>
         <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 border-none bg-transparent shadow-none overflow-hidden flex items-center justify-center">
-          {selectedImage && (
-            <div className="relative w-full h-full flex items-center justify-center">
+          {selectedImageInfo && (
+            <div className="relative w-full h-full flex items-center justify-center group">
+              {selectedImageInfo.images.length > 1 && (
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 border-none text-white rounded-full h-10 w-10 z-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setSelectedImageInfo(prev => ({ ...prev, index: (prev.index - 1 + prev.images.length) % prev.images.length })); 
+                  }}
+                >
+                  <ChevronLeft className="w-6 h-6" />
+                </Button>
+              )}
+              
               <img 
-                src={selectedImage} 
+                src={selectedImageInfo.images[selectedImageInfo.index].startsWith('data:') ? selectedImageInfo.images[selectedImageInfo.index] : `data:image/png;base64,${selectedImageInfo.images[selectedImageInfo.index]}`} 
                 alt="Zoomed evidence" 
                 className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300"
               />
+              
+              {selectedImageInfo.images.length > 1 && (
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 border-none text-white rounded-full h-10 w-10 z-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setSelectedImageInfo(prev => ({ ...prev, index: (prev.index + 1) % prev.images.length })); 
+                  }}
+                >
+                  <ChevronRight className="w-6 h-6" />
+                </Button>
+              )}
+
               <Button 
                 variant="outline" 
                 size="icon" 
-                className="absolute top-2 right-2 bg-white/20 hover:bg-white/40 border-none text-white rounded-full h-8 w-8"
-                onClick={() => setSelectedImage(null)}
+                className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 border-none text-white rounded-full h-8 w-8 z-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => setSelectedImageInfo(null)}
               >
                 <X className="w-4 h-4" />
               </Button>
+
+              {selectedImageInfo.images.length > 1 && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1.5 rounded-full font-medium z-50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  {selectedImageInfo.index + 1} / {selectedImageInfo.images.length}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
