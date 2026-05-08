@@ -416,6 +416,9 @@ class GRNItemReadSerializer(serializers.ModelSerializer):
                                                 allow_null=True)
     vendor_name         = serializers.CharField(source="batch.vendor.vendor_name",
                                                 read_only=True, allow_null=True)
+    rejection_confirmed_by_username = serializers.CharField(
+        source="rejection_confirmed_by.username", read_only=True, allow_null=True
+    )
     snapshot_volume_cm3 = serializers.ReadOnlyField()
 
     class Meta:
@@ -436,6 +439,7 @@ class GRNItemReadSerializer(serializers.ModelSerializer):
             "snapshot_abc", "snapshot_xyz", "snapshot_ved",
             "unit_price", "total_price",
             "rejection_confirmed", "rejection_confirmed_at", "rejection_confirmed_by",
+            "rejection_confirmed_by_username",
             "qc_status", "created_at",
         ]
 

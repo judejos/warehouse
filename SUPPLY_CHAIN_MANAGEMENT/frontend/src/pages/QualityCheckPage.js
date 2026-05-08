@@ -248,6 +248,7 @@ function InlineQCRow({ item, onSaved }) {
   const [rejectionNotes, setRejectionNotes] = useState(item.rejection_notes || "");
   const [rejectionImages, setRejectionImages] = useState(item.rejection_images || []);
   const [saving, setSaving] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const received = item.received_quantity ?? 0;
   const total = Number(accepted) + Number(rejected);
@@ -469,12 +470,34 @@ function InlineQCRow({ item, onSaved }) {
                     src={img} 
                     alt="Rejection evidence" 
                     className="w-full h-full object-cover cursor-zoom-in"
-                    onClick={() => window.open(img, '_blank')}
+                    onClick={() => setSelectedImage(img)}
                   />
                 </div>
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Image Zoom Dialog */}
+      {selectedImage && (
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex items-center justify-center">
+            <img 
+              src={selectedImage} 
+              alt="Zoomed evidence" 
+              className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300"
+            />
+            <button 
+              className="absolute -top-10 right-0 p-2 text-white hover:text-gray-300 transition-colors"
+              onClick={() => setSelectedImage(null)}
+            >
+              <X className="w-8 h-8" />
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -753,7 +776,7 @@ function GRNQCCard({ grn, defaultExpanded = false, onApproved }) {
               </div>
               {items.map((item) => (
                 <InlineQCRow
-                  key={item.grn_item_id}
+                  key={item.grn_item_id + item.qc_status}
                   item={item}
                   onSaved={refreshItems}
                 />

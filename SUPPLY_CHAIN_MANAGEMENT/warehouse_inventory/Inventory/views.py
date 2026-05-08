@@ -1492,9 +1492,9 @@ class QCUpdateGRNItem(APIView):
     def put(self, request, pk):
         print(f"QC Update Data: {request.data}")
         item = get_object_or_404(GRNItem, pk=pk)
-        if item.qc_status == "Completed":
+        if item.rejection_confirmed:
             return Response(
-                {"error": "QC for this item is already completed."},
+                {"error": "This rejection has already been confirmed by a manager and cannot be edited."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         s = GRNItemQCSerializer(item, data=request.data, partial=True)

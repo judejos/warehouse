@@ -15,7 +15,7 @@ import {
 import { Button } from "../components/ui/button";
 import { 
   AlertCircle, CheckCircle2, Eye, Loader2, Package, Search, 
-  Trash2, ShieldAlert, ImageIcon, History, ClipboardCheck
+  Trash2, ShieldAlert, ImageIcon, History, ClipboardCheck, X
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
 import { useAuth } from "../components/lib/auth-context";
@@ -32,6 +32,7 @@ export default function RejectionDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [confirming, setConfirming] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const isManager = user?.role === "manager" || user?.role === "admin";
 
@@ -78,7 +79,8 @@ export default function RejectionDetailsPage() {
   const filteredItems = items.filter(item => 
     item.grn_item_id.toLowerCase().includes(search.toLowerCase()) ||
     item.product_name.toLowerCase().includes(search.toLowerCase()) ||
-    item.rejection_reason.toLowerCase().includes(search.toLowerCase())
+    item.rejection_reason.toLowerCase().includes(search.toLowerCase()) ||
+    (item.rejection_notes && item.rejection_notes.toLowerCase().includes(search.toLowerCase()))
   );
 
   if (loading) {
@@ -202,7 +204,7 @@ export default function RejectionDetailsPage() {
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gray-900">{item.rejection_reason || "Unspecified"}</span>
-                        <span className="text-xs text-gray-500 line-clamp-1">{item.rejection_notes}</span>
+                        <span className="text-xs text-gray-500 whitespace-pre-wrap">{item.rejection_notes}</span>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -252,8 +254,12 @@ export default function RejectionDetailsPage() {
                                   </div>
                                   <div>
                                     <Label className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-1 block">Rejection Notes</Label>
-                                    <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg leading-relaxed border border-gray-100 italic">
-                                      "{item.rejection_notes || "No detailed notes provided."}"
+                                    <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg leading-relaxed border border-gray-100 min-h-[60px] whitespace-pre-wrap">
+                                      {item.rejection_notes ? (
+                                        <span className="italic text-gray-600">"{item.rejection_notes}"</span>
+                                      ) : (
+                                        <span className="text-gray-400 italic">No detailed notes provided.</span>
+                                      )}
                                     </p>
                                   </div>
                                 </div>
@@ -270,7 +276,7 @@ export default function RejectionDetailsPage() {
                                     <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
                                       <p className="text-[10px] uppercase tracking-widest text-emerald-600 font-bold mb-1">Confirmed By</p>
                                       <p className="text-sm font-bold text-emerald-900">
-                                        {item.rejection_confirmed_by || "System Admin"} 
+                                        {item.rejection_confirmed_by_username || "System Admin"} 
                                         <span className="block text-[10px] font-normal text-emerald-600 opacity-70 mt-0.5 font-mono">
                                           {new Date(item.rejection_confirmed_at).toLocaleString()}
                                         </span>
@@ -285,7 +291,11 @@ export default function RejectionDetailsPage() {
                                 {item.rejection_images && item.rejection_images.length > 0 ? (
                                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     {item.rejection_images.map((img, i) => (
-                                      <div key={i} className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 hover:border-[#1E3A8A] transition-all cursor-zoom-in">
+                                      <div 
+                                        key={i} 
+                                        className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50 hover:border-[#1E3A8A] transition-all cursor-zoom-in"
+                                        onClick={() => setSelectedImage(img.startsWith('data:') ? img : `data:image/png;base64,${img}`)}
+                                      >
                                         <img
                                           src={img.startsWith('data:') ? img : `data:image/png;base64,${img}`}
                                           alt={`evidence-${i}`}
@@ -354,6 +364,29 @@ export default function RejectionDetailsPage() {
           </Table>
         </div>
       </Card>
+
+      {/* Image Zoom Dialog */}
+      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+        <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 border-none bg-transparent shadow-none overflow-hidden flex items-center justify-center">
+          {selectedImage && (
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img 
+                src={selectedImage} 
+                alt="Zoomed evidence" 
+                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-300"
+              />
+              <Button 
+                variant="outline" 
+                size="icon" 
+                className="absolute top-2 right-2 bg-white/20 hover:bg-white/40 border-none text-white rounded-full h-8 w-8"
+                onClick={() => setSelectedImage(null)}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
