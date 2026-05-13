@@ -48,7 +48,6 @@ import {
   Package, MapPin, ChevronRight, Trash2, RotateCcw,
   XCircle, Box, Printer,
 } from "lucide-react";
-import { useToast } from "../components/ui/use-toast";
 import { useAuth } from "../components/lib/auth-context";
 import {
   listGRNs,
@@ -325,7 +324,6 @@ function ScannerStatusBar({ active, paused, grn, loading }) {
    MODE 1 — Supervisor: Add items to a GRN by scanning product barcodes
 ════════════════════════════════════════════════════════════ */
 function AddItemsMode({ user }) {
-  const { toast } = useToast();
   const [grns, setGrns]               = useState([]);
   const [activeGRN, setActiveGRN]     = useState(null);
   const [scanResult, setScanResult]   = useState(null);
@@ -335,6 +333,7 @@ function AddItemsMode({ user }) {
   const [adding, setAdding]           = useState(false);
   const [addedItems, setAddedItems]   = useState([]);
   const [paused, setPaused]           = useState(false);
+  const [globalError, setGlobalError] = useState("");
   const setF = (k, v) => setAddForm(f => ({ ...f, [k]: v }));
 
   useEffect(() => {
@@ -345,7 +344,7 @@ function AddItemsMode({ user }) {
 
   const handleBarcode = useCallback(async (barcode) => {
     if (!activeGRN) {
-      toast({ title: "No GRN Selected", description: "Select an active GRN first.", variant: "destructive" });
+      setGlobalError("Select an active GRN first.");
       setLastScan({ value: "No active GRN", type: "error" });
       return;
     }
@@ -357,16 +356,16 @@ function AddItemsMode({ user }) {
       setScanResult(res);
       setAddForm({ batch_number: "", received_cartons: "1", manufactured_date: "", expiry_date: "" });
       setPaused(true); // Stop scanning while filling form
-      toast({ title: "Product Found", description: res.product_name });
+      setGlobalError("");
     } catch (err) {
       console.error("Scan error:", err);
       setLastScan({ value: `${barcode} — Not Found`, type: "error" });
       setScanResult(null);
-      toast({ title: "Scan Failed", description: err.message, variant: "destructive" });
+      setGlobalError(err.message || "Product not found");
     } finally {
       setScanning(false);
     }
-  }, [activeGRN, toast]);
+  }, [activeGRN]);
 
   const inputRef = useScannerInput(handleBarcode, paused);
 
@@ -383,10 +382,10 @@ function AddItemsMode({ user }) {
       });
       const qty = Math.round(parseInt(addForm.received_cartons) * (scanResult.conversion_factor || 1));
       setAddedItems(prev => [{ barcode: scanResult.barcode, name: scanResult.product_name, batch: addForm.batch_number, cartons: parseInt(addForm.received_cartons), qty, unit: scanResult.base_unit, ts: new Date() }, ...prev]);
-      toast({ title: "Item Added", description: `${scanResult.product_name} — ${addForm.received_cartons} carton(s)` });
-      setScanResult(null); setLastScan({ value: "", type: "" }); setPaused(false);
+      setAddedItems(prev => [{ barcode: scanResult.barcode, name: scanResult.product_name, batch: addForm.batch_number, cartons: parseInt(addForm.received_cartons), qty, unit: scanResult.base_unit, ts: new Date() }, ...prev]);
+      setScanResult(null); setLastScan({ value: "", type: "" }); setPaused(false); setGlobalError("");
       setTimeout(() => inputRef.current?.focus(), 50);
-    } catch (err) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    } catch (err) { setGlobalError(err.message); }
     finally { setAdding(false); }
   };
 
@@ -409,6 +408,14 @@ function AddItemsMode({ user }) {
       </div>
 
       <ScannerStatusBar active={!!activeGRN} paused={paused} grn={activeGRN} loading={scanning} />
+      
+      {globalError && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {globalError}
+        </div>
+      )}
+
       {lastScan.value && <ScanFlash value={lastScan.value} type={lastScan.type} />}
 
       {scanResult && (
@@ -509,12 +516,13 @@ function AddItemsMode({ user }) {
    MODE 2 — Putaway: Scan GRN or item barcode → show plan → confirm inline
 ════════════════════════════════════════════════════════════ */
 function PutawayMode() {
-  const { toast } = useToast();
   const [decoding, setDecoding]         = useState(false);
   const [lastScan, setLastScan]         = useState({ value: "", type: "" });
   const [result, setResult]             = useState(null);
   const [confirming, setConfirming]     = useState({});
   const [qtyOverrides, setQtyOverrides] = useState({});
+  const [rowErrors, setRowErrors]       = useState({}); 
+  const [globalError, setGlobalError]   = useState(""); // Error message for general scanning
 
   const handleBarcode = useCallback(async (barcode) => {
     setDecoding(true);
@@ -527,15 +535,15 @@ function PutawayMode() {
       const init = {};
       for (const p of plans) init[p.plan_id] = String(p.planned_quantity);
       setQtyOverrides(init);
-      toast({ title: "Barcode Decoded", description: `Found ${plans.length} plan(s).` });
+      setGlobalError("");
     } catch (err) {
       console.error("Decode error:", err);
       setLastScan({ value: `${barcode} — ${err.message}`, type: "error" });
-      toast({ title: "Decode Failed", description: err.message, variant: "destructive" });
+      setGlobalError(err.message || "Failed to decode barcode");
     } finally {
       setDecoding(false);
     }
-  }, [toast]);
+  }, []);
 
   const inputRef = useScannerInput(handleBarcode, false);
 
@@ -545,56 +553,100 @@ function PutawayMode() {
     if (!qty || qty <= 0) return;
     setConfirming(p => ({ ...p, [plan.plan_id]: true }));
     try {
-      await confirmPutaway(plan.plan_id, { quantity_placed: qty });
-      toast({ title: "Putaway Confirmed", description: `${qty} units → ${plan.bin_id || plan.bin}` });
+      const res = await confirmPutaway(plan.plan_id, { quantity_placed: qty });
+      setRowErrors(p => ({ ...p, [plan.plan_id]: null }));
+      
       setResult(prev => {
         if (!prev) return prev;
         const key = prev.putaway_plans ? "putaway_plans" : "putaway_plan";
-        return { ...prev, [key]: (prev[key] || []).map(p => p.plan_id === plan.plan_id ? { ...p, status: "Completed", quantity_placed: qty } : p) };
+        const existing = Array.isArray(prev[key]) ? prev[key] : [];
+
+        // Mark current as completed
+        let updated = existing.map(p => 
+          p.plan_id === plan.plan_id ? { ...p, status: "Completed", quantity_placed: res.qty_placed } : p
+        );
+
+        // If there was a spillover, add the new plan row
+        if (res.new_plan_id && res.new_bin_data) {
+          const newPlan = {
+            ...plan, // copy product metadata
+            plan_id:          res.new_plan_id,
+            bin_id:           res.new_bin_id,
+            bin:              res.new_bin_id,
+            zone_id:          res.new_bin_data.zone_id,
+            zone_type:        res.new_bin_data.zone_type,
+            rack_id:          res.new_bin_data.rack_id,
+            shelf_id:         res.new_bin_data.shelf_id,
+            shelf_position:   res.new_bin_data.shelf_position,
+            distance_from_dispatch: res.new_bin_data.distance_from_dispatch,
+            status:           "Pending",
+            quantity_placed:  0,
+            planned_quantity: res.remainder,
+          };
+          updated.push(newPlan);
+          
+          // Pre-populate qty for the new plan
+          setQtyOverrides(prevQ => ({ ...prevQ, [res.new_plan_id]: String(res.remainder) }));
+          
+          // Show message on the original row about spillover
+          setRowErrors(p => ({ ...p, [plan.plan_id]: `Partial: ${res.qty_placed} confirmed. Remaining ${res.remainder} moved to new bin.` }));
+        }
+
+        return { ...prev, [key]: updated };
       });
-    } catch (err) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
-    finally { setConfirming(p => ({ ...p, [plan.plan_id]: false })); }
+    } catch (err) {
+      const msg = err.message || "Failed to confirm putaway";
+      setRowErrors(p => ({ ...p, [plan.plan_id]: msg }));
+    } finally {
+      setConfirming(p => ({ ...p, [plan.plan_id]: false }));
+    }
   };
 
   const handleReassign = async (planId) => {
+    setRowErrors(p => ({ ...p, [planId]: null }));
     try {
       const res = await reassignPutawayBin(planId, {});
-      toast({
-        title: "Bin Reassigned",
-        description: `Old: ${res.old_bin_id} → New: ${res.new_bin_id} (${res.zone_id} / ${res.rack_id} / ${res.shelf_id})`,
-      });
+      setRowErrors(p => ({ ...p, [planId]: null }));
 
       /* ── Update the result state in-place so the user keeps context ── */
       setResult(prev => {
         if (!prev) return prev;
 
-        // Determine which key holds the plans array
         const planKey = prev.putaway_plans ? "putaway_plans" : "putaway_plan";
         const existing = Array.isArray(prev[planKey]) ? prev[planKey] : [];
 
-        // Mark the old plan as Reassigned locally
-        const updated = existing.map(p =>
-          p.plan_id === planId ? { ...p, status: "Reassigned" } : p
-        );
-
-        // Append the new pending plan that the backend just created
+        // ── Merge product details from old plan into the new plan object ──
+        const oldPlan = existing.find(p => p.plan_id === planId) || {};
+        
         const newPlan = {
+          ...oldPlan, // Copy product_name, batch_number, expiry_date, base_unit, etc.
           plan_id:          res.new_plan_id,
           bin_id:           res.new_bin_id,
           bin:              res.new_bin_id,
           zone_id:          res.zone_id,
           rack_id:          res.rack_id,
           shelf_id:         res.shelf_id,
+          zone_type:        res.zone_type,
+          shelf_position:   res.shelf_position,
+          distance_from_dispatch: res.distance_from_dispatch,
           status:           "Pending",
-          planned_quantity: existing.find(p => p.plan_id === planId)?.planned_quantity ?? 0,
           quantity_placed:  0,
-          distance_from_dispatch: null,
+          planned_quantity: oldPlan.planned_quantity ?? 0,
         };
+
+        // Update overrides immediately so the user can confirm the new row
+        setQtyOverrides(prevQ => ({ ...prevQ, [res.new_plan_id]: String(newPlan.planned_quantity) }));
+
+        const updated = existing.map(p =>
+          p.plan_id === planId ? { ...p, status: "Reassigned" } : p
+        );
         updated.push(newPlan);
 
         return { ...prev, [planKey]: updated };
       });
-    } catch (err) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+    } catch (err) { 
+      setRowErrors(p => ({ ...p, [planId]: err.message || "Failed to reassign bin" }));
+    }
   };
 
   const plans = result ? toArr(result.putaway_plans || result.putaway_plan || []) : [];
@@ -604,6 +656,14 @@ function PutawayMode() {
       <input ref={inputRef} className="sr-only" readOnly tabIndex={-1} />
 
       <ScannerStatusBar active paused={false} loading={decoding} />
+      
+      {globalError && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {globalError}
+        </div>
+      )}
+
       <p className="text-xs text-gray-500">Scan a <strong>GRN barcode (GRN-XXXX)</strong> for the full plan, or an <strong>item barcode (GRN-ITM-XXXX)</strong> for a single item.</p>
 
       {lastScan.value && <ScanFlash value={lastScan.value} type={lastScan.type} />}
@@ -659,9 +719,10 @@ function PutawayMode() {
               <div className="divide-y divide-gray-50">
                 {plans.map(plan => {
                   const isDone = plan.status === "Completed";
+                  const isReassigned = plan.status === "Reassigned";
                   const isCfm  = confirming[plan.plan_id];
                   return (
-                    <div key={plan.plan_id} className={`px-4 py-4 ${isDone ? "bg-emerald-50/40" : ""}`}>
+                    <div key={plan.plan_id} className={`px-4 py-4 ${isDone ? "bg-emerald-50/40" : isReassigned ? "bg-gray-50/60 opacity-60" : ""}`}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-2">
@@ -687,19 +748,32 @@ function PutawayMode() {
                               {plan.expiry_date  && <span className="ml-2 text-amber-600">Exp: {fmtD(plan.expiry_date)}</span>}
                             </p>
                           )}
+                          {rowErrors[plan.plan_id] && (
+                            <p className={`text-[10px] px-2 py-1 rounded mt-2 flex items-center gap-1 border ${
+                              rowErrors[plan.plan_id].includes("Partial") 
+                              ? "text-amber-700 bg-amber-50 border-amber-100" 
+                              : "text-red-600 bg-red-50 border-red-100"
+                            }`}>
+                              {rowErrors[plan.plan_id].includes("Partial") ? <RefreshCw className="w-3 h-3 shrink-0" /> : <AlertTriangle className="w-3 h-3 shrink-0" />}
+                              {rowErrors[plan.plan_id]}
+                            </p>
+                          )}
                           <div className="flex gap-4 mt-2 text-xs">
                             <span className="text-gray-500">Planned: <strong className="text-gray-800">{plan.planned_quantity}</strong></span>
                             {plan.quantity_placed > 0 && <span className="text-emerald-600">Placed: <strong>{plan.quantity_placed}</strong></span>}
                           </div>
                         </div>
 
-                        {!isDone ? (
+                        {plan.status === "Pending" ? (
                           <div className="flex flex-col gap-2 shrink-0">
                             <div className="flex items-center gap-2">
                               <Input
                                 type="number" min="1" max={plan.planned_quantity}
                                 value={qtyOverrides[plan.plan_id] ?? String(plan.planned_quantity)}
-                                onChange={e => setQtyOverrides(q => ({ ...q, [plan.plan_id]: e.target.value }))}
+                                onChange={e => {
+                                  setQtyOverrides(q => ({ ...q, [plan.plan_id]: e.target.value }));
+                                  setRowErrors(q => ({ ...q, [plan.plan_id]: null }));
+                                }}
                                 className="w-20 h-8 text-sm text-center border-gray-300"
                               />
                               <Button
@@ -716,10 +790,15 @@ function PutawayMode() {
                               <RotateCcw className="w-3 h-3" /> Reassign bin
                             </button>
                           </div>
-                        ) : (
+                        ) : isDone ? (
                           <div className="flex items-center gap-2 text-emerald-600">
                             <CheckCircle className="w-5 h-5" />
                             <div className="text-xs"><p className="font-semibold">Done</p>{plan.completed_by && <p className="text-gray-400">{plan.completed_by}</p>}</div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-gray-400">
+                            <RefreshCw className="w-5 h-5" />
+                            <div className="text-xs font-semibold uppercase tracking-wider">Reassigned</div>
                           </div>
                         )}
                       </div>
@@ -748,22 +827,23 @@ function PutawayMode() {
    Opens a print-ready HTML sheet instead of downloading a .doc
 ════════════════════════════════════════════════════════════ */
 function LogSheetsMode() {
-  const { toast } = useToast();
   const [grns, setGrns]                 = useState([]);
   const [loading, setLoading]           = useState(true);
   const [itemsCache, setItemsCache]     = useState({});
   const [printing, setPrinting]         = useState({});
   const [expanded, setExpanded]         = useState(null);
   const [loadingItems, setLoadingItems] = useState({});
+  const [globalError, setGlobalError]     = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listGRNs();
       setGrns(toArr(res).filter(g => ["PUTAWAY_PENDING", "COMPLETED"].includes(g.status)));
-    } catch (err) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+      setGlobalError("");
+    } catch (err) { setGlobalError(err.message || "Failed to load GRNs"); }
     finally { setLoading(false); }
-  }, [toast]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -788,7 +868,8 @@ function LogSheetsMode() {
         setItemsCache(p => ({ ...p, [grn.grn_id]: items }));
       }
       openPrintSheet(grn, items);
-    } catch (err) { toast({ title: "Error", description: err.message, variant: "destructive" }); }
+      setGlobalError("");
+    } catch (err) { setGlobalError(err.message || "Failed to generate print sheet"); }
     finally { setPrinting(p => ({ ...p, [grn.grn_id]: false })); }
   };
 
@@ -804,6 +885,12 @@ function LogSheetsMode() {
 
   return (
     <div className="space-y-2">
+      {globalError && (
+        <div className="p-3 mb-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {globalError}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-1">
         <p className="text-xs text-gray-500">
           Click <strong>Print Sheet</strong> to open a print-ready barcode log for the inventory logger.

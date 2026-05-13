@@ -106,6 +106,8 @@ class Vendor(models.Model):
                                        help_text="e.g. Net-30, COD")
     warehouse      = models.ForeignKey(Warehouse, on_delete=models.SET_NULL,
                                         null=True, blank=True, related_name="vendors")
+    supplier_id    = models.CharField(max_length=10, blank=True, default="",
+                                        help_text="Linked Supplier ID (e.g. SUP0001)")
     is_active      = models.BooleanField(default=True)
     created_at     = models.DateTimeField(auto_now_add=True)
     updated_at     = models.DateTimeField(auto_now=True)

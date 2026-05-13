@@ -17,7 +17,7 @@ import math
 import base64
 import logging
 
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, F
 from django.db import transaction
 from django.conf import settings
 from django.core.mail import send_mail
@@ -98,16 +98,16 @@ def generate_grn_item_barcode(grn_item) -> str:
 def decode_grn_barcode(scanned_value: str) -> str:
     """
     Decodes a scanned barcode value.
-    Accepts both GRN-level ("GRN-XXXX") and item-level ("GRN-ITM-XXXX") codes.
+    Accepts GRN-level ("GRN-XXXX"), item-level ("GRN-ITM-XXXX"),
+    and plan-level ("PAP-XXXX") codes.
     Returns the raw ID string.
-    Raises ValueError if format is not recognised.
     """
     value = scanned_value.strip().upper()
-    if value.startswith("GRN-ITM-") or value.startswith("GRN-"):
+    if value.startswith("GRN-ITM-") or value.startswith("GRN-") or value.startswith("PAP-"):
         return value
     raise ValueError(
         f"Invalid barcode '{scanned_value}'. "
-        "Expected GRN-XXXX or GRN-ITM-XXXX format."
+        "Expected GRN-XXXX, GRN-ITM-XXXX, or PAP-XXXX format."
     )
 
 
@@ -359,25 +359,16 @@ def check_reorder(product, preferred_vendor_id=None):
 # BIN ASSIGNMENT  (zone-type aware)
 # ─────────────────────────────────────────────
 
-def assign_bin(product, quantity_units: int, exclude_bin_id: str | None = None) -> Bin:
+def assign_bin(product, quantity_units: int, exclude_bin_ids: list[str] | None = None) -> Bin:
     """
     Finds the best available bin for putaway.
 
-    Zone resolution (in priority order):
-      1. product.zone_id  — admin-assigned explicit zone.
-      2. Category → zone_type mapping — prevents e.g. frozen goods going into dry zone.
-
-    Shelf position filter:
-      POUCH → position 3 (top), BOX → 2 (middle), BAG → 1 (bottom)
-
-    Capacity filters (all three must pass):
-      available_units > 0, available_weight_kg >= product.weight_kg,
-      available_volume_cm3 >= product.volume_cm3
-
-    Sort: ABC=A → nearest first; B/C/blank → farthest first.
-
-    exclude_bin_id: if provided, that bin_id is excluded from candidates.
-      Used by reassignment to guarantee a *different* bin is returned.
+    Real-world logic:
+      1. Zone resolution: Product-specific zone OR Category-specific zone_type.
+      2. Consolidation: Prioritize bins already containing this product (if not full).
+      3. Capacity: All three (units, weight, volume) must pass.
+      4. Strategy: ABC=A (fast-moving) → Nearest to dispatch; Others → Deep/Back.
+      5. Exclusion: Avoid bins already picked in this session/loop.
     """
     package_type = getattr(product, "package_type", None)
     required_pos = PACKAGE_SHELF_POSITION.get(package_type) if package_type else None
@@ -404,42 +395,47 @@ def assign_bin(product, quantity_units: int, exclude_bin_id: str | None = None) 
     if required_pos:
         bins = bins.filter(shelf__position=required_pos)
 
-    # Exclude the current bin if caller supplied one (used for reassignment)
-    if exclude_bin_id:
-        bins = bins.exclude(bin_id=exclude_bin_id)
+    # Exclude bins already filled in this loop or specifically requested for exclusion
+    if exclude_bin_ids:
+        bins = bins.exclude(bin_id__in=exclude_bin_ids)
 
-    candidates = []
-    for b in bins:
-        if b.available_units <= 0:
-            continue
-        if unit_weight and b.available_weight_kg < unit_weight:
-            continue
-        if unit_volume and b.available_volume_cm3 < unit_volume:
-            continue
-        candidates.append(b)
-
-    if not candidates:
-        zone_info = (
-            f"zone_id={product.zone_id}" if product.zone_id
-            else f"category={product.category}"
-        )
-        if exclude_bin_id:
-            raise ValueError(
-                f"No alternative bin found for product {product.product_id} "
-                f"({zone_info}, package_type={package_type}). "
-                f"All bins other than {exclude_bin_id} are full or do not match the zone/type. "
-                "Consider adding more bins or freeing capacity in the zone."
-            )
-        raise ValueError(
-            f"No suitable bin found for product {product.product_id} "
-            f"({zone_info}, package_type={package_type}, shelf_pos={required_pos}). "
-            "All compatible bins may be full or none exist for this zone/package type."
-        )
-
-    candidates.sort(
-        key=lambda b: b.distance_from_dispatch,
-        reverse=(abc_class != "A"),
+    # ── CAPACITY FILTERING ────────────────────────────────────────────────────
+    unit_weight = product.weight_kg or 0
+    unit_volume = product.volume_cm3 or 0
+    
+    # We filter for at least ONE unit of space here
+    bins = bins.filter(
+        current_load__lt=F("capacity")
     )
+    if unit_weight > 0:
+        bins = bins.filter(current_weight_kg__lte=F("max_weight_kg") - unit_weight)
+    if unit_volume > 0:
+        bins = bins.filter(used_volume_cm3__lte=F("volume_cm3") - unit_volume)
+
+    # ── SCORING / PRIORITIZATION ──────────────────────────────────────────────
+    # 1. Consolidation Score: 100 points if the product is already in the bin
+    # 2. Distance Score: Closer bins get better scores (inverted distance)
+    
+    candidates = list(bins)
+    if not candidates:
+        raise ValueError(f"No suitable bin found for product {product.product_id} in its assigned zone.")
+
+    def score_bin(b: Bin):
+        score = 0
+        # Consolidation check
+        if Inventory.objects.filter(product=product, bin=b, quantity__gt=0).exists():
+            score += 100
+        
+        # Distance (ABC aware)
+        dist = b.distance_from_dispatch or 999
+        if abc_class == "A":
+            score += (1000 - dist) # Closer is better
+        else:
+            score += dist          # Farther is better (keep front bins for A-items)
+        
+        return score
+
+    candidates.sort(key=score_bin, reverse=True)
     return candidates[0]
 
 
@@ -501,29 +497,31 @@ def generate_putaway_plans(grn):
 
             # ── Putaway plan rows ─────────────────────────────────────────────
             remaining = item.accepted_quantity
+            used_bins = []
 
             while remaining > 0:
-                bin_obj = assign_bin(item.product, remaining)
+                try:
+                    bin_obj = assign_bin(item.product, remaining, exclude_bin_ids=used_bins)
+                except ValueError:
+                    # If we can't find ANY more bins, we must stop and leave the rest
+                    logger.error("Out of space for %s during plan generation.", item.product_id)
+                    break
 
                 unit_weight = item.product.weight_kg or 0
                 unit_volume = item.product.volume_cm3 or 0
 
+                # Calculate actual capacity considering our already planned but not yet confirmed units in this loop
+                # (Since we haven't confirmed, Bin.available_units won't change yet)
                 fit_units  = bin_obj.available_units
-                fit_weight = (
-                    int(bin_obj.available_weight_kg / unit_weight)
-                    if unit_weight else remaining
-                )
-                fit_volume = (
-                    int(bin_obj.available_volume_cm3 / unit_volume)
-                    if unit_volume else remaining
-                )
+                fit_weight = int(bin_obj.available_weight_kg / unit_weight) if unit_weight else remaining
+                fit_volume = int(bin_obj.available_volume_cm3 / unit_volume) if unit_volume else remaining
+                
                 plan_qty = min(remaining, fit_units, fit_weight, fit_volume)
 
                 if plan_qty <= 0:
-                    raise ValueError(
-                        f"Bin {bin_obj.bin_id} reports available space "
-                        f"but cannot fit even 1 unit of {item.product.product_id}."
-                    )
+                    # This bin is reported as available but can't fit even one unit
+                    used_bins.append(bin_obj.bin_id)
+                    continue
 
                 plan = PutawayPlan.objects.create(
                     grn_item         = item,
@@ -537,6 +535,13 @@ def generate_putaway_plans(grn):
                 )
                 created_plans.append(plan)
                 remaining -= plan_qty
+                
+                # If this bin is now full (theoretically), exclude it from next iterations of this loop
+                if plan_qty >= min(fit_units, fit_weight, fit_volume):
+                    used_bins.append(bin_obj.bin_id)
+
+            if remaining > 0:
+                logger.warning("Spillover: %d units of %s could not be assigned to any bin.", remaining, item.product_id)
 
     return created_plans
 

@@ -23,6 +23,7 @@ def mirror_supplier_to_vendor(sender, instance, created, **kwargs):
             city=instance.city or "",
             state=instance.state or "",
             country=instance.country or "",
+            supplier_id=instance.supplier_id,
             is_active=instance.is_active
         )
     else:
@@ -42,5 +43,6 @@ def mirror_supplier_to_vendor(sender, instance, created, **kwargs):
             vendor.state = instance.state
         if instance.country:
             vendor.country = instance.country
+        vendor.supplier_id = instance.supplier_id
         vendor.is_active = instance.is_active
         vendor.save()

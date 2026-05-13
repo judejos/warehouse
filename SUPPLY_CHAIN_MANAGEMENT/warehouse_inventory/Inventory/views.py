@@ -1740,6 +1740,35 @@ class GRNBarcodeDecodeView(APIView):
                 }
             )
 
+        # ── Plan-level scan ───────────────────────────────────────────────────
+        if decoded_id.startswith("PAP-"):
+            try:
+                plan = PutawayPlan.objects.select_related(
+                    "product", "vendor", "batch",
+                    "bin__shelf__rack__zone",
+                    "grn_item__grn",
+                    "completed_by",
+                ).get(plan_id=decoded_id)
+            except PutawayPlan.DoesNotExist:
+                return Response(
+                    {"error": f"Putaway plan '{decoded_id}' not found."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            return Response(
+                {
+                    "scan_type":         "item",  # Treat single plan scan like an item scan for UI consistency
+                    "grn_item_id":       plan.grn_item.grn_item_id,
+                    "grn_id":            plan.grn_item.grn.grn_id,
+                    "product_name":      plan.product.product_name,
+                    "barcode":           plan.product.barcode,
+                    "batch_number":      plan.batch.batch_number,
+                    "accepted_quantity": plan.grn_item.accepted_quantity,
+                    "base_unit":         plan.product.base_unit,
+                    "putaway_plans":     [PutawayPlanSerializer(plan).data],
+                }
+            )
+
         # ── GRN-level scan ────────────────────────────────────────────────────
         try:
             grn = GRN.objects.select_related(
@@ -1900,26 +1929,29 @@ class ConfirmPutawayPlanView(APIView):
         bin_obj     = plan.bin
 
         with transaction.atomic():
-            # ── RE-VERIFY CAPACITY AT CONFIRMATION ──
+            # ── AUTO-SPILLOVER LOGIC ──────────────────────────────────────────
             # Re-fetch bin with lock to ensure no concurrent additions
             locked_bin = Bin.objects.select_for_update().get(bin_id=bin_obj.bin_id)
+
+            # If the bin cannot fit the full amount, we take what fits and 
+            # automatically reassign the remainder to a new bin.
             
-            if locked_bin.available_units < qty_placed:
+            fit_by_units  = locked_bin.available_units
+            fit_by_weight = int(locked_bin.available_weight_kg / unit_weight) if unit_weight > 0 else qty_placed
+            fit_by_volume = int(locked_bin.available_volume_cm3 / unit_volume) if unit_volume > 0 else qty_placed
+            
+            can_fit = max(0, min(qty_placed, fit_by_units, fit_by_weight, fit_by_volume))
+            remainder = qty_placed - can_fit
+
+            if can_fit == 0 and qty_placed > 0:
+                # Truly zero space — must reassign everything
                 return Response(
-                    {"error": f"Bin {locked_bin.bin_id} no longer has enough unit capacity. (Available: {locked_bin.available_units}, Trying to place: {qty_placed})"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            if unit_weight and locked_bin.available_weight_kg < (qty_placed * unit_weight):
-                 return Response(
-                    {"error": f"Bin {locked_bin.bin_id} no longer has enough weight capacity."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            if unit_volume and locked_bin.available_volume_cm3 < (qty_placed * unit_volume):
-                 return Response(
-                    {"error": f"Bin {locked_bin.bin_id} no longer has enough volume capacity."},
+                    {"error": f"Bin {locked_bin.bin_id} is completely full. Please use the 'Reassign' button to find a new bin."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            actual_qty = can_fit
+            
             inventory, _ = Inventory.objects.get_or_create(
                 product  = product,
                 vendor   = plan.vendor,
@@ -1932,14 +1964,14 @@ class ConfirmPutawayPlanView(APIView):
                 },
             )
             prev_qty           = inventory.quantity
-            inventory.quantity += qty_placed
+            inventory.quantity += actual_qty
             inventory.grn_item     = plan.grn_item
             inventory.putaway_plan = plan
             inventory.save()
 
-            locked_bin.current_load      += qty_placed
-            locked_bin.current_weight_kg += qty_placed * unit_weight
-            locked_bin.used_volume_cm3   += qty_placed * unit_volume
+            locked_bin.current_load      += actual_qty
+            locked_bin.current_weight_kg += actual_qty * unit_weight
+            locked_bin.used_volume_cm3   += actual_qty * unit_volume
             locked_bin.save()
 
             StockMovement.objects.create(
@@ -1948,12 +1980,12 @@ class ConfirmPutawayPlanView(APIView):
                 batch          = plan.batch,
                 bin            = locked_bin,
                 movement_type  = "INBOUND",
-                quantity       = qty_placed,
+                quantity       = actual_qty,
                 previous_stock = prev_qty,
                 new_stock      = inventory.quantity,
             )
 
-            plan.quantity_placed = qty_placed
+            plan.quantity_placed = actual_qty
             plan.status          = "Completed"
             plan.completed_by    = request.user
             plan.completed_at    = timezone.now()
@@ -1979,6 +2011,41 @@ class ConfirmPutawayPlanView(APIView):
                     redirect_url="/dashboard"
                 )
 
+            # ── Handle Remainder (Automatic Reassignment) ──
+            new_plan_id = None
+            new_bin_id  = None
+            if remainder > 0:
+                try:
+                    new_bin = assign_bin(product, remainder, exclude_bin_ids=[locked_bin.bin_id])
+                    spill_plan = PutawayPlan.objects.create(
+                        grn_item         = plan.grn_item,
+                        product          = product,
+                        vendor           = plan.vendor,
+                        batch            = plan.batch,
+                        bin              = new_bin,
+                        planned_quantity = remainder,
+                        quantity_placed  = 0,
+                        status           = "Pending",
+                        notes            = f"Spillover from {locked_bin.bin_id} (full). Original plan: {plan.plan_id}",
+                    )
+                    new_plan_id = spill_plan.plan_id
+                    new_bin_id  = new_bin.bin_id
+                    new_bin_data = {
+                        "bin_id": new_bin.bin_id,
+                        "zone_id": new_bin.shelf.rack.zone.zone_id,
+                        "zone_type": new_bin.shelf.rack.zone.zone_type,
+                        "rack_id": new_bin.shelf.rack.rack_id,
+                        "shelf_id": new_bin.shelf.shelf_id,
+                        "shelf_position": new_bin.shelf.position,
+                        "distance_from_dispatch": new_bin.distance_from_dispatch,
+                    }
+                except ValueError:
+                    # No space anywhere else either? 
+                    # We still confirmed the partial amount, but we should warn
+                    new_bin_data = None
+            else:
+                new_bin_data = None
+
         check_reorder(product)
 
         return Response(
@@ -1989,7 +2056,11 @@ class ConfirmPutawayPlanView(APIView):
                 "size":          product.size,
                 "batch_number":  plan.batch.batch_number,
                 "bin_id":        bin_obj.bin_id,
-                "qty_placed":    qty_placed,
+                "qty_placed":    actual_qty,
+                "remainder":     remainder,
+                "new_plan_id":   new_plan_id,
+                "new_bin_id":    new_bin_id,
+                "new_bin_data":  new_bin_data,
                 "base_unit":     product.base_unit,
                 "inventory_id":  inventory.inventory_id,
                 "grn_completed": all_done,
@@ -2026,7 +2097,7 @@ class ReassignPutawayBinView(APIView):
             new_bin = assign_bin(
                 plan.product,
                 plan.planned_quantity,
-                exclude_bin_id=old_bin.bin_id,
+                exclude_bin_ids=[old_bin.bin_id],
             )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -2065,6 +2136,9 @@ class ReassignPutawayBinView(APIView):
                 "shelf_id":    new_bin.shelf.shelf_id,
                 "rack_id":     new_bin.shelf.rack.rack_id,
                 "zone_id":     new_bin.shelf.rack.zone.zone_id,
+                "zone_type":   new_bin.shelf.rack.zone.zone_type,
+                "shelf_position": new_bin.shelf.position,
+                "distance_from_dispatch": new_bin.distance_from_dispatch,
             }
         )
 
