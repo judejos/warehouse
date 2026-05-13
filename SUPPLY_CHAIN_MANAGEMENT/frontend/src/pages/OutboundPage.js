@@ -82,18 +82,18 @@ function DispatchDialog({ onClose, onSuccess }) {
         
         // Map them together
         const combined = allSuppliersList.map(s => {
-          // Find the corresponding vendor by name or email to get the ID the backend needs
+          // Find the corresponding vendor by name, email, or numerical ID sequence to get the ID the backend needs
           const matchingVendor = allVendorsList.find(v => 
             v.vendor_name?.trim().toLowerCase() === s.supplier_name?.trim().toLowerCase() ||
-            (v.email && s.email && v.email.trim().toLowerCase() === s.email.trim().toLowerCase())
+            (v.email && s.email && v.email.trim().toLowerCase() === s.email.trim().toLowerCase()) ||
+            parseInt((v.vendor_id || "").replace(/\D/g, ""), 10) === parseInt((s.supplier_id || "").replace(/\D/g, ""), 10)
           );
-          const stock = byVendorList.find(sd => sd.vendor_id === matchingVendor?.vendor_id);
           
           return {
             supplier_id: s.supplier_id,
             supplier_name: s.supplier_name,
             vendor_id: matchingVendor?.vendor_id || "", // Internal ID for backend
-            total_quantity: stock ? stock.total_qty : 0
+            total_quantity: stockData ? stockData.total_stock : 0
           };
         });
 
@@ -107,23 +107,22 @@ function DispatchDialog({ onClose, onSuccess }) {
   }, [selectedProduct]);
 
   const selectedProductObj = products.find(p => p.product_id === selectedProduct);
+  const selectedSupplierObj = vendorStocks.find(vs => vs.supplier_id === selectedSupplierId);
+  const availableStock = selectedSupplierObj ? selectedSupplierObj.total_quantity : 0;
+  const enteredQty = parseInt(quantity) || 0;
+
+  const isDispatchBlocked = !selectedProduct || !selectedSupplierId || enteredQty <= 0 || enteredQty > availableStock || availableStock === 0;
 
   const handleDispatch = async () => {
-    if (!selectedProduct) {
-      toast({ title: "Required", description: "Please select a product.", variant: "destructive" });
+    if (isDispatchBlocked) {
+      toast({ title: "Blocked", description: "Dispatch validation failed. Please check quantity and available stock.", variant: "destructive" });
       return;
     }
-    const qty = parseInt(quantity);
-    if (!qty || qty <= 0) {
-      toast({ title: "Required", description: "Please enter a valid quantity (> 0).", variant: "destructive" });
-      return;
-    }
-    const selectedSupplierObj = vendorStocks.find(vs => vs.supplier_id === selectedSupplierId);
     setSubmitting(true);
     try {
       const res = await outboundPick(selectedProduct, { 
-        quantity: qty,
-        vendor_id: selectedSupplierObj?.vendor_id || null
+        quantity: enteredQty,
+        vendor_id: null // Dispatch from total warehouse pool as requested
       });
       setResult(res);
       onSuccess();
@@ -136,7 +135,7 @@ function DispatchDialog({ onClose, onSuccess }) {
 
       let description = res.reorder_triggered 
         ? res.message 
-        : `${qty} units of ${selectedProductObj?.product_name} dispatched.`;
+        : `${enteredQty} units of ${selectedProductObj?.product_name} dispatched.`;
       
       if (res.low_stock_warning && !res.reorder_triggered) {
         description += ` Remaining stock (${res.remaining_stock}) is below reorder point.`;
@@ -299,8 +298,17 @@ function DispatchDialog({ onClose, onSuccess }) {
                               <User className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="font-bold text-xs text-slate-800">{vs.supplier_name}</p>
-                              <p className="text-[10px] text-slate-500">
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-xs text-slate-800">{vs.supplier_name}</p>
+                                {vs.total_quantity > 20 ? (
+                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">🟢 In Stock</span>
+                                ) : vs.total_quantity > 0 ? (
+                                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">🟠 Low Stock</span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">🔴 Out of Stock</span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-0.5">
                                 ID: <span className="font-mono font-bold text-indigo-600">{vs.supplier_id}</span> · Stock: <span className="text-indigo-600 font-bold">{vs.total_quantity}</span> {selectedProductObj?.base_unit}
                               </p>
                             </div>
@@ -320,19 +328,53 @@ function DispatchDialog({ onClose, onSuccess }) {
               )}
             </div>
 
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold">
-                Quantity * {selectedProductObj?.base_unit ? `(in ${selectedProductObj.base_unit})` : ""}
-              </Label>
-              <Input
-                type="number"
-                min="1"
-                placeholder="e.g. 50"
-                value={quantity}
-                onChange={e => setQuantity(e.target.value)}
-                className="h-9 text-sm"
-              />
-            </div>
+            {selectedSupplierId && (
+              <div className="grid gap-1.5 animate-in fade-in duration-200">
+                <Label className="text-xs font-semibold">
+                  Quantity * {selectedProductObj?.base_unit ? `(in ${selectedProductObj.base_unit})` : ""}
+                </Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max={availableStock > 0 ? availableStock : 1}
+                  placeholder="e.g. 50"
+                  value={quantity}
+                  onChange={e => setQuantity(e.target.value)}
+                  disabled={availableStock === 0}
+                  className="h-9 text-sm"
+                />
+                
+                <p className={`text-[11px] font-medium ${
+                  availableStock === 0 ? "text-rose-600" : enteredQty > availableStock ? "text-rose-600 font-bold" : availableStock <= 20 ? "text-amber-600" : "text-emerald-600"
+                }`}>
+                  Available to Dispatch: <strong>{availableStock}</strong> {selectedProductObj?.base_unit || "Pieces"}
+                </p>
+              </div>
+            )}
+
+            {selectedSupplierId && availableStock === 0 && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 flex items-start gap-2.5 animate-in zoom-in-95 duration-200">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-rose-800">
+                  <p className="font-bold">🚫 This supplier has no available stock.</p>
+                  <p className="text-[11px] text-rose-600 mt-0.5">Please select another supplier with available stock to proceed.</p>
+                </div>
+              </div>
+            )}
+
+            {selectedSupplierId && availableStock > 0 && enteredQty > availableStock && (
+              <div className="rounded-xl border border-rose-300 bg-red-50 p-3 flex items-start gap-2.5 animate-in zoom-in-95 duration-200">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                <div className="text-xs text-red-900 space-y-1">
+                  <p className="font-bold text-red-800">⚠ Insufficient Stock Available.</p>
+                  <p className="text-[11px] text-red-700">
+                    Available Stock: <strong>{availableStock}</strong> {selectedProductObj?.base_unit || "Pieces"}<br />
+                    Requested Dispatch: <strong>{enteredQty}</strong> {selectedProductObj?.base_unit || "Pieces"}
+                  </p>
+                  <p className="text-[11px] font-semibold text-red-800">Reduce quantity or select another supplier.</p>
+                </div>
+              </div>
+            )}
 
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 flex items-start gap-2">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
@@ -345,12 +387,18 @@ function DispatchDialog({ onClose, onSuccess }) {
               <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
               <Button
                 onClick={handleDispatch}
-                disabled={submitting || !selectedProduct || !quantity || !selectedSupplierId}
-                className="bg-[#1E3A8A] hover:bg-[#162d6e]"
+                disabled={submitting || isDispatchBlocked}
+                className={`bg-[#1E3A8A] hover:bg-[#162d6e] transition-all ${
+                  isDispatchBlocked ? "opacity-50 cursor-not-allowed" : ""
+                }`}
               >
-                {submitting
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Dispatching…</>
-                  : <><Truck className="w-4 h-4 mr-2" />Dispatch Stock</>}
+                {submitting ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Dispatching…</>
+                ) : selectedSupplierId && enteredQty > availableStock ? (
+                  <>❌ Insufficient Stock</>
+                ) : (
+                  <><Truck className="w-4 h-4 mr-2" />Dispatch Stock</>
+                )}
               </Button>
             </DialogFooter>
           </div>

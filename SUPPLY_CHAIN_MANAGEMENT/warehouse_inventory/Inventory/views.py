@@ -2232,23 +2232,24 @@ class OptimizedOutboundView(APIView):
             )
 
             if not inventories:
-                msg = "No stock available in bins"
-                if vendor_id:
-                    msg += " for the selected supplier"
-                msg += ". An automated reorder check has been performed."
-                
                 return Response(
                     {
-                        "message": msg,
+                        "success": False,
+                        "error": "Insufficient stock available for dispatch.",
+                        "message": "Insufficient stock available for dispatch.",
                         "reorder_triggered": True
                     },
-                    status=status.HTTP_200_OK,
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             total = sum(inv.quantity for inv in inventories)
             if qty > total:
                 return Response(
-                    {"error": f"Requested {qty} units but only {total} available."},
+                    {
+                        "success": False,
+                        "error": "Insufficient stock available for dispatch.",
+                        "message": "Insufficient stock available for dispatch."
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
