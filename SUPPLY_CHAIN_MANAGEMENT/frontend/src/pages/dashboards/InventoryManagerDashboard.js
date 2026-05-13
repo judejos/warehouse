@@ -17,7 +17,7 @@ export default function InventoryManagerDashboard({ stats, inventoryInsights, ou
           { label: "Stock Items", value: stats.totalProducts, icon: Package, color: "text-blue-600", bg: "bg-blue-50" },
           { label: "Low Stock Alert", value: stats.lowStock, icon: TrendingDown, color: "text-rose-600", bg: "bg-rose-50" },
           { label: "Active Suppliers", value: stats.totalSuppliers, icon: Truck, color: "text-indigo-600", bg: "bg-indigo-50" },
-          { label: "Pending Shipments", value: outboundStats.pending, icon: Boxes, color: "text-purple-600", bg: "bg-purple-50" },
+          { label: "Incoming Orders", value: outboundStats.pending, icon: Boxes, color: "text-purple-600", bg: "bg-purple-50" },
         ].map((kpi, i) => (
           <Card key={i} className="shadow-sm border-slate-100">
             <CardContent className="p-5">

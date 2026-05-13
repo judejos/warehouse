@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../components/lib/auth-context";
 import { Loader2, Activity } from "lucide-react";
 import {
   listProducts,
   listPurchaseRequests,
-  getQCPendingGRNs,
   listSuppliers,
   listVendors,
   listEmployees,
@@ -39,7 +37,6 @@ const toArray = (res, knownKey = null) => {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalProducts:  0,
     pendingPRs:     0,
@@ -68,12 +65,11 @@ export default function DashboardPage() {
     setIsLoading(true);
     try {
       const [
-        productsRes, prsRes, qcGrnsRes, suppliersRes, vendorsRes, employeesRes,
+        productsRes, prsRes, suppliersRes, vendorsRes, employeesRes,
         posRes, asnRes, grnsRes, grnItemsRes, movementsRes, inventoryRes
       ] = await Promise.allSettled([
         listProducts(),
         listPurchaseRequests(),
-        getQCPendingGRNs(),
         listSuppliers(),
         listVendors(),
         listEmployees(),
@@ -127,7 +123,7 @@ export default function DashboardPage() {
       const rejectedToday = grnItemsList.filter(item => (item.rejected_quantity > 0) && isToday(item.updated_at || item.created_at));
       
       const grnPoIds = new Set(grnList.map(g => g.po_id || g.po?.po_id));
-      const pendingDispatch = poList.filter(po => !grnPoIds.has(po.po_id));
+      const pendingReceipts = poList.filter(po => !grnPoIds.has(po.po_id));
       
       const lowStockItems = productList.filter(p => {
         const stock = stockMap[p.product_id] || 0;
@@ -148,7 +144,7 @@ export default function DashboardPage() {
         poToday: poToday.length,
         grnToday: grnToday.length,
         rejectedToday: rejectedToday.length,
-        pendingDispatch: pendingDispatch.length,
+        pendingReceipts: pendingReceipts.length,
         lowStock: lowStockItems.length,
       });
 
@@ -193,9 +189,9 @@ export default function DashboardPage() {
 
       const shippedToday = movementList.filter(m => m.movement_type === "OUTBOUND" && isToday(m.created_at)).length;
       setOutboundStats({
-        pending: pendingDispatch.length,
+        pending: pendingReceipts.length,
         shippedToday,
-        delayed: pendingDispatch.filter(po => {
+        delayed: pendingReceipts.filter(po => {
           const created = new Date(po.created_at);
           const diff = (new Date() - created) / (1000 * 60 * 60 * 24);
           return diff > 3;

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "../components/ui/textarea";
 import {
   Search, Loader2, RefreshCw, Plus, ScanLine, ChevronDown, ChevronUp,
-  CheckCircle, Package, Camera, X, Image as ImageIcon
+  CheckCircle, Package, Camera, X
 } from "lucide-react";
 import { useAuth } from "../components/lib/auth-context";
 import { useToast } from "../components/ui/use-toast";

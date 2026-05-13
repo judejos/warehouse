@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { 
-  Card, CardContent, CardHeader, CardTitle 
+  Card, CardContent 
 } from "../components/ui/card";
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow 

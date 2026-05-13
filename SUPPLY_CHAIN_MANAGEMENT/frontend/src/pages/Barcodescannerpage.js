@@ -365,10 +365,8 @@ function AddItemsMode({ user }) {
       toast({ title: "Scan Failed", description: err.message, variant: "destructive" });
     } finally {
       setScanning(false);
-      // Ensure input stays focused for next scan if not paused
-      if (!paused) setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [activeGRN, paused, toast]);
+  }, [activeGRN, toast]);
 
   const inputRef = useScannerInput(handleBarcode, paused);
 
@@ -536,12 +534,11 @@ function PutawayMode() {
       toast({ title: "Decode Failed", description: err.message, variant: "destructive" });
     } finally {
       setDecoding(false);
-      // Continuous scanning: refocus immediately
-      setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [toast]);
 
   const inputRef = useScannerInput(handleBarcode, false);
+
 
   const handleConfirm = async (plan) => {
     const qty = parseInt(qtyOverrides[plan.plan_id] || plan.planned_quantity);

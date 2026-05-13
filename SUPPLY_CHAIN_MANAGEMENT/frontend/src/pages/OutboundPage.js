@@ -8,8 +8,8 @@ import {
 import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import {
-  Plus, Search, Eye, Loader2, PackageOpen, Truck,
-  RefreshCw, CheckCircle2, AlertTriangle,
+  Plus, Search, Eye, Loader2, PackageOpen, Truck, ShoppingBag,
+  RefreshCw, CheckCircle2, AlertTriangle, X, User
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -17,8 +17,8 @@ import {
 } from "../components/ui/dialog";
 import { useToast } from "../components/ui/use-toast";
 import {
-  listPurchaseOrders, getPurchaseOrder,
-  outboundPick, listProducts, listStockMovements,
+  outboundPick, listProducts, listStockMovements, 
+  getProductStockByVendor, listProductVendors, listVendors, listSuppliers
 } from "../services/apiService";
 
 /* ── helpers ── */
@@ -34,19 +34,14 @@ const toArray = (res, knownKey = null) => {
 const matchesSearch = (value, query) =>
   String(value ?? "").toLowerCase().includes(query);
 
-const STATUS_MAP = {
-  pending:    { label: "Pending",    variant: "outline" },
-  approved:   { label: "Approved",   variant: "default" },
-  dispatched: { label: "Dispatched", variant: "secondary" },
-  cancelled:  { label: "Cancelled",  variant: "destructive" },
-};
-
 /* ── Dispatch Dialog ── */
 function DispatchDialog({ onClose, onSuccess }) {
   const { toast } = useToast();
   const [products, setProducts]     = useState([]);
   const [loadingProd, setLoadingProd] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState("");
+  const [selectedVendor, setSelectedVendor] = useState("");
+  const [vendorStocks, setVendorStocks] = useState([]);
   const [quantity, setQuantity]     = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult]         = useState(null);   // success result
@@ -66,6 +61,47 @@ function DispatchDialog({ onClose, onSuccess }) {
     p.barcode?.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Fetch all suppliers when component mounts or product changes
+  useEffect(() => {
+    const fetchSupplierData = async () => {
+      try {
+        // 1. Get ALL registered suppliers in the system
+        const suppliersData = await listSuppliers();
+        const allSuppliersList = suppliersData?.results || suppliersData || [];
+        
+        // 2. Also get vendors to ensure we have the mapping for the backend
+        const vendorsData = await listVendors();
+        const allVendorsList = vendorsData?.results || vendorsData || [];
+
+        let stockData = [];
+        if (selectedProduct) {
+          // 3. Get current stock for the selected product across all vendors
+          stockData = await getProductStockByVendor(selectedProduct);
+        }
+        
+        // Map them together
+        const combined = allSuppliersList.map(s => {
+          // Find the corresponding vendor by name to get the ID the backend needs
+          const matchingVendor = allVendorsList.find(v => v.vendor_name === s.supplier_name);
+          const stock = (stockData || []).find(sd => sd.vendor_id === matchingVendor?.vendor_id);
+          
+          return {
+            supplier_id: s.supplier_id,
+            supplier_name: s.supplier_name,
+            vendor_id: matchingVendor?.vendor_id || "", // Internal ID for backend
+            total_quantity: stock ? stock.total_quantity : 0
+          };
+        });
+
+        setVendorStocks(combined);
+        if (!selectedProduct) setSelectedVendor("");
+      } catch (err) {
+        console.error("Failed to fetch suppliers:", err);
+      }
+    };
+    fetchSupplierData();
+  }, [selectedProduct]);
+
   const selectedProductObj = products.find(p => p.product_id === selectedProduct);
 
   const handleDispatch = async () => {
@@ -80,10 +116,32 @@ function DispatchDialog({ onClose, onSuccess }) {
     }
     setSubmitting(true);
     try {
-      const res = await outboundPick(selectedProduct, { quantity: qty });
+      const res = await outboundPick(selectedProduct, { 
+        quantity: qty,
+        vendor_id: selectedVendor || null
+      });
       setResult(res);
       onSuccess();
-      toast({ title: "Dispatch Successful", description: `${qty} units of ${selectedProductObj?.product_name} dispatched.` });
+      
+      const isLow = res.reorder_triggered || res.low_stock_warning;
+      
+      let title = "Dispatch Successful";
+      if (res.reorder_triggered) title = "Stock Alert";
+      else if (res.low_stock_warning) title = "Low Stock Alert";
+
+      let description = res.reorder_triggered 
+        ? res.message 
+        : `${qty} units of ${selectedProductObj?.product_name} dispatched.`;
+      
+      if (res.low_stock_warning && !res.reorder_triggered) {
+        description += ` Remaining stock (${res.remaining_stock}) is below reorder point.`;
+      }
+
+      toast({ 
+        title,
+        description,
+        variant: isLow ? "default" : "default" 
+      });
     } catch (err) {
       toast({ title: "Dispatch Failed", description: err.message, variant: "destructive" });
     } finally {
@@ -105,7 +163,6 @@ function DispatchDialog({ onClose, onSuccess }) {
         </DialogHeader>
 
         {result ? (
-          /* ── Success View ── */
           <div className="space-y-4 py-2">
             <div className="flex items-center gap-2 text-emerald-700 font-semibold">
               <CheckCircle2 className="w-5 h-5" />
@@ -129,40 +186,131 @@ function DispatchDialog({ onClose, onSuccess }) {
             </DialogFooter>
           </div>
         ) : (
-          /* ── Form View ── */
           <div className="space-y-4 py-2">
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold">Product *</Label>
-              <Input
-                placeholder="Search product name or barcode…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-8 text-sm mb-1"
-              />
-              {loadingProd ? (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="w-4 h-4 animate-spin text-[#1E3A8A]" />
+            <div className="grid gap-2">
+              <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Product Selection *</Label>
+              
+              {!selectedProduct ? (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by name, ID or barcode…"
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      className="pl-9 h-10 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                    />
+                    {search && (
+                      <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                        <X className="w-4 h-4 text-muted-foreground hover:text-gray-900" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="border rounded-xl overflow-hidden shadow-sm">
+                    <div className="max-h-[180px] overflow-y-auto bg-slate-50/50">
+                      {loadingProd ? (
+                        <div className="flex flex-col items-center justify-center py-8 gap-2">
+                          <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                          <p className="text-[10px] text-slate-500 font-medium">Loading products...</p>
+                        </div>
+                      ) : filteredProducts.length === 0 ? (
+                        <div className="py-8 text-center">
+                          <PackageOpen className="w-6 h-6 mx-auto text-slate-300 mb-2" />
+                          <p className="text-xs text-slate-500 italic">No matching products found.</p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-slate-100">
+                          {filteredProducts.map(p => (
+                            <button
+                              key={p.product_id}
+                              onClick={() => setSelectedProduct(p.product_id)}
+                              className="w-full px-4 py-3 text-left hover:bg-white hover:shadow-inner transition-all flex items-center justify-between group"
+                            >
+                              <div>
+                                <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
+                                  {p.product_name}
+                                </p>
+                                <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                  ID: {p.product_id} {p.barcode ? `· BC: ${p.barcode}` : ""}
+                                </p>
+                              </div>
+                              <Plus className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:scale-110 transition-all" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <select
-                  value={selectedProduct}
-                  onChange={e => setSelectedProduct(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  size={Math.min(filteredProducts.length + 1, 6)}
-                >
-                  <option value="">— Select a product —</option>
-                  {filteredProducts.map(p => (
-                    <option key={p.product_id} value={p.product_id}>
-                      {p.product_name}  [{p.product_id}]  {p.barcode ? `· ${p.barcode}` : ""}
-                    </option>
-                  ))}
-                </select>
+                /* ── Selected State ── */
+                <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-between animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-indigo-600">
+                      <ShoppingBag className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{selectedProductObj?.product_name}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-bold uppercase rounded">
+                          {selectedProductObj?.product_id}
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          Unit: <strong>{selectedProductObj?.base_unit || "Units"}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => { setSelectedProduct(""); setSearch(""); }}
+                    className="p-2 hover:bg-white rounded-lg transition-all text-slate-400 hover:text-rose-500 hover:shadow-sm"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               )}
-              {selectedProductObj && (
-                <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-800">
-                  <span className="font-semibold">{selectedProductObj.product_name}</span>
-                  {selectedProductObj.base_unit && <span className="ml-2 text-blue-500">Unit: {selectedProductObj.base_unit}</span>}
-                  {selectedProductObj.barcode && <span className="ml-2 font-mono">{selectedProductObj.barcode}</span>}
+
+              {/* ── Vendor Selection ── */}
+              {selectedProduct && (
+                <div className="space-y-2 mt-4 animate-in slide-in-from-top-2 duration-300">
+                  <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">SELECT SUPPLIER (REQUIRED) *</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {vendorStocks.length > 0 ? (
+                      vendorStocks.map((vs) => (
+                        <div
+                          key={vs.supplier_id}
+                          onClick={() => setSelectedVendor(vs.vendor_id === selectedVendor ? "" : vs.vendor_id)}
+                          className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-all ${
+                            selectedVendor === vs.vendor_id
+                              ? "border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600 shadow-sm"
+                              : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              selectedVendor === vs.vendor_id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"
+                            }`}>
+                              <User className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-xs text-slate-800">{vs.supplier_name}</p>
+                              <p className="text-[10px] text-slate-500">
+                                ID: <span className="font-mono font-bold text-indigo-600">{vs.supplier_id}</span> · Stock: <span className="text-indigo-600 font-bold">{vs.total_quantity}</span> {selectedProductObj?.base_unit}
+                              </p>
+                            </div>
+                          </div>
+                          {selectedVendor === vs.vendor_id && (
+                            <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex flex-col items-center gap-2">
+                        <p className="text-[10px] text-slate-400 font-medium italic">No specific supplier stock records found.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -192,7 +340,7 @@ function DispatchDialog({ onClose, onSuccess }) {
               <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
               <Button
                 onClick={handleDispatch}
-                disabled={submitting || !selectedProduct || !quantity}
+                disabled={submitting || !selectedProduct || !quantity || !selectedVendor}
                 className="bg-[#1E3A8A] hover:bg-[#162d6e]"
               >
                 {submitting
@@ -207,81 +355,18 @@ function DispatchDialog({ onClose, onSuccess }) {
   );
 }
 
-/* ── View Order Dialog ── */
-function ViewOrderDialog({ order, onClose }) {
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            Order Details: {order?.po_id ?? order?.pr_id}
-          </DialogTitle>
-          <DialogDescription>
-            Vendor: {order?.vendor?.vendor_name ?? "—"}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-2 gap-x-6 gap-y-3 py-4 text-sm">
-          <div>
-            <p className="text-xs text-muted-foreground">PR Reference</p>
-            <p className="font-mono">{order?.pr?.pr_id ?? order?.pr_id ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Status</p>
-            <Badge
-              variant={STATUS_MAP[order?.status]?.variant || "outline"}
-              className="text-xs mt-0.5"
-            >
-              {STATUS_MAP[order?.status]?.label || order?.status || "—"}
-            </Badge>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Product</p>
-            <p>
-              {order?.pr?.product?.product_name ??
-                order?.product?.product_name ?? "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Quantity</p>
-            <p>{order?.order_quantity ?? order?.requested_quantity ?? "—"}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Unit Price</p>
-            <p>
-              ₹{(
-                order?.pr?.product?.unit_price ??
-                order?.product?.unit_price ?? 0
-              ).toLocaleString()}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Total Amount</p>
-            <p className="font-bold">₹{(order?.total_amount ?? 0).toLocaleString()}</p>
-          </div>
-          <div className="col-span-2">
-            <p className="text-xs text-muted-foreground">Created Date</p>
-            <p>
-              {order?.created_at
-                ? new Date(order.created_at).toLocaleString()
-                : "—"}
-            </p>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 /* ── Recent Outbound Movements ── */
-function OutboundMovementsCard({ movements, isLoading }) {
-  const outbound = movements.filter(m => m.movement_type === "OUTBOUND");
-
-  if (!isLoading && outbound.length === 0) return null;
+function OutboundMovementsCard({ movements, isLoading, search }) {
+  const q = search.toLowerCase();
+  const filtered = movements.filter(m => 
+    m.movement_type === "OUTBOUND" && (
+      !q ||
+      m.product_name?.toLowerCase().includes(q) ||
+      m.bin_id?.toLowerCase().includes(q) ||
+      m.batch_number?.toLowerCase().includes(q) ||
+      m.vendor_name?.toLowerCase().includes(q)
+    )
+  );
 
   return (
     <Card className="shadow-sm overflow-hidden">
@@ -291,7 +376,7 @@ function OutboundMovementsCard({ movements, isLoading }) {
           Recent Outbound Movements
         </p>
         <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#1E3A8A] text-white text-[10px] font-bold">
-          {outbound.length}
+          {filtered.length}
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -310,12 +395,18 @@ function OutboundMovementsCard({ movements, isLoading }) {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-6">
-                  <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
+                <TableCell colSpan={7} className="text-center py-10">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
+                </TableCell>
+              </TableRow>
+            ) : filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">
+                  {search ? "No movements match your search." : "No outbound movements found. Dispatch stock to see activity here."}
                 </TableCell>
               </TableRow>
             ) : (
-              outbound.slice(0, 20).map(m => (
+              filtered.slice(0, 50).map(m => (
                 <TableRow key={m.id ?? m.movement_id} className="hover:bg-muted/20">
                   <TableCell className="text-xs font-medium text-gray-800">{m.product_name}</TableCell>
                   <TableCell className="text-xs text-gray-500">{m.vendor_name || "—"}</TableCell>
@@ -342,31 +433,10 @@ function OutboundMovementsCard({ movements, isLoading }) {
 
 /* ══════ MAIN PAGE ══════ */
 export default function OutboundPage() {
-  const { toast } = useToast();
-  const [search, setSearch]               = useState("");
-  const [orders, setOrders]               = useState([]);
-  const [isLoading, setIsLoading]         = useState(true);
-  const [movements, setMovements]         = useState([]);
-  const [movLoading, setMovLoading]       = useState(true);
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [dispatchOpen, setDispatchOpen]   = useState(false);
-
-  const loadOrders = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const data = await listPurchaseOrders();
-      const all  = toArray(data);
-      setOrders(
-        all.filter(o => o.status === "approved" || o.status === "dispatched")
-      );
-    } catch (error) {
-      console.error("Failed to load orders:", error);
-      toast({ title: "Error", description: "Failed to load outbound orders.", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
+  const [search, setSearch]           = useState("");
+  const [movements, setMovements]     = useState([]);
+  const [movLoading, setMovLoading]   = useState(true);
+  const [dispatchOpen, setDispatchOpen] = useState(false);
 
   const loadMovements = useCallback(async () => {
     setMovLoading(true);
@@ -374,59 +444,36 @@ export default function OutboundPage() {
       const data = await listStockMovements();
       setMovements(toArray(data));
     } catch {
-      /* silent — movements are supplementary */
+      /* silent */
     } finally {
       setMovLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadOrders();
     loadMovements();
-  }, [loadOrders, loadMovements]);
-
-  const handleViewOrder = async orderId => {
-    try {
-      const order = await getPurchaseOrder(orderId);
-      setSelectedOrder(order);
-      setViewDialogOpen(true);
-    } catch (error) {
-      console.error("Failed to load order details:", error);
-      toast({ title: "Error", description: "Failed to load order details.", variant: "destructive" });
-    }
-  };
-
-  const handleDispatchSuccess = () => {
-    loadMovements();   // refresh movements immediately to show new dispatch
-  };
-
-  const q = search.toLowerCase();
-  const filtered = orders.filter(o =>
-    matchesSearch(o.po_id, q) ||
-    matchesSearch(o.pr_id, q) ||
-    matchesSearch(o.vendor?.vendor_name, q)
-  );
+  }, [loadMovements]);
 
   return (
     <div className="space-y-5">
-      {/* ── Header toolbar ── */}
+      {/* ── Toolbar ── */}
       <div className="flex items-center justify-between gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search orders…"
+            placeholder="Search dispatch history…"
             className="pl-9 h-9"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+              <X className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-9"
-            onClick={() => { loadOrders(); loadMovements(); }}
-          >
+          <Button size="sm" variant="outline" className="h-9" onClick={loadMovements}>
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
           </Button>
           <Button
@@ -436,105 +483,23 @@ export default function OutboundPage() {
           >
             <Truck className="w-4 h-4 mr-1.5" /> Dispatch Stock
           </Button>
-          <Button size="sm" variant="outline" className="h-9" asChild>
-            <a href="/purchase-requests">
-              <Plus className="w-4 h-4 mr-1.5" /> New Order
-            </a>
-          </Button>
         </div>
       </div>
 
-      {/* ── Approved Purchase Orders table ── */}
-      <Card className="shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b bg-muted/30">
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-            Approved Purchase Orders
-          </p>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center gap-2">
+            <PackageOpen className="w-5 h-5 text-[#1E3A8A]" />
+            Outbound Dispatch History
+          </h2>
         </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="text-xs font-semibold">PO ID</TableHead>
-                <TableHead className="text-xs font-semibold">Vendor</TableHead>
-                <TableHead className="text-xs font-semibold text-right">Quantity</TableHead>
-                <TableHead className="text-xs font-semibold text-right">Total Amount</TableHead>
-                <TableHead className="text-xs font-semibold">Created Date</TableHead>
-                <TableHead className="text-xs font-semibold">Status</TableHead>
-                <TableHead className="text-xs font-semibold text-right w-[80px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground text-sm">
-                    No outbound orders found. Orders appear here after finance approval.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map(order => (
-                  <TableRow key={order.po_id ?? order.pr_id} className="hover:bg-muted/20">
-                    <TableCell className="text-xs font-mono font-medium">
-                      {order.po_id ?? order.pr_id}
-                    </TableCell>
-                    <TableCell className="text-sm">{order.vendor?.vendor_name || "—"}</TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">
-                      {order.order_quantity ?? order.requested_quantity ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-right tabular-nums font-medium">
-                      ₹{(order.total_amount ?? 0).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {order.created_at
-                        ? new Date(order.created_at).toLocaleDateString()
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={STATUS_MAP[order.status]?.variant || "outline"}
-                        className="text-xs"
-                      >
-                        {STATUS_MAP[order.status]?.label || order.status || "Pending"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <button
-                        onClick={() => handleViewOrder(order.po_id ?? order.pr_id)}
-                        className="p-1.5 rounded hover:bg-muted transition-colors"
-                        title="View Details"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
+        <OutboundMovementsCard movements={movements} isLoading={movLoading} search={search} />
+      </div>
 
-      {/* ── Recent Outbound Movements ── */}
-      <OutboundMovementsCard movements={movements} isLoading={movLoading} />
-
-      {/* ── Dialogs ── */}
       {dispatchOpen && (
         <DispatchDialog
           onClose={() => setDispatchOpen(false)}
-          onSuccess={handleDispatchSuccess}
-        />
-      )}
-
-      {viewDialogOpen && selectedOrder && (
-        <ViewOrderDialog
-          order={selectedOrder}
-          onClose={() => setViewDialogOpen(false)}
+          onSuccess={loadMovements}
         />
       )}
     </div>

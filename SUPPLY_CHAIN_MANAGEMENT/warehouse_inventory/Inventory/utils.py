@@ -17,8 +17,10 @@ import math
 import base64
 import logging
 
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, Q
 from django.db import transaction
+from django.conf import settings
+from django.core.mail import send_mail
 
 from .models import Inventory, PurchaseRequest, PurchaseOrder, Bin, Batch
 from rbac.utils import notify_role
@@ -35,6 +37,8 @@ SAFETY_STOCK        = 20    # base units
 
 LEAD_TIME_WEIGHT  = 0.6
 RECURRENCE_WEIGHT = 0.4
+# PRs above this amount go to Finance Director for approval
+APPROVAL_THRESHOLD = 5000
 
 PACKAGE_SHELF_POSITION = {
     "POUCH": 3,   # top    — lightweight
@@ -205,16 +209,58 @@ def score_vendors_for_product(product):
     return scored
 
 
-def get_best_vendor(product):
+def get_best_vendor(product, preferred_vendor_id=None):
+    if preferred_vendor_id:
+        from vendors.models import Vendor, VendorAgreement
+        try:
+            vendor = Vendor.objects.get(vendor_id=preferred_vendor_id)
+            if VendorAgreement.objects.filter(vendor=vendor, products=product, status="Approved").exists():
+                return {"vendor": vendor, "score": 1.0}
+        except Vendor.DoesNotExist:
+            pass
     scores = score_vendors_for_product(product)
     return scores[0] if scores else None
+
+# ─────────────────────────────────────────────
+# PR / PO HELPERS
+# ─────────────────────────────────────────────
+
+def send_po_email(po: PurchaseOrder) -> None:
+    """Non-blocking PO notification email to vendor."""
+    try:
+        send_mail(
+            subject=f"Purchase Order {po.po_id}",
+            message=(
+                f"Purchase Order : {po.po_id}\n"
+                f"Product        : {po.pr.product.product_name}\n"
+                f"Quantity       : {po.order_quantity} {po.pr.product.base_unit}s "
+                f"({po.order_cartons} {po.pr.product.purchase_unit}s)\n"
+                f"Total Amount   : ₹{po.total_amount}\n"
+            ),
+            from_email=settings.EMAIL_HOST_USER,
+            recipient_list=[po.vendor.email],
+            fail_silently=True,
+        )
+    except Exception:
+        logger.exception("PO email failed for %s", po.po_id)
+
+
+def create_po_from_pr(pr: PurchaseRequest) -> PurchaseOrder:
+    """Create a PurchaseOrder from an approved PR inside an active atomic block."""
+    return PurchaseOrder.objects.create(
+        pr             = pr,
+        vendor         = pr.vendor,
+        order_cartons  = pr.requested_cartons,
+        order_quantity = pr.requested_quantity,
+        total_amount   = pr.total_amount,
+    )
 
 
 # ─────────────────────────────────────────────
 # REORDER CHECK
 # ─────────────────────────────────────────────
 
-def check_reorder(product):
+def check_reorder(product, preferred_vendor_id=None):
     """
     Called after every stock change (inbound confirm and outbound).
     Uses product.effective_reorder_point (admin re_order > calculated reorder_point > 0).
@@ -234,11 +280,21 @@ def check_reorder(product):
     if total_stock > threshold:
         return
 
-    if PurchaseRequest.objects.filter(product=product, status="Pending").exists():
-        logger.info("Reorder skipped for %s — pending PR already exists.", product.product_id)
+    # ── Duplicate Prevention ──
+    # Skip if there is an active PR (Pending, Finance, or Approved) that hasn't been fulfilled.
+    # A PR is "in-flight" if it has no GRNs OR at least one GRN that is not yet COMPLETED.
+    active_pr_exists = PurchaseRequest.objects.filter(
+        product=product,
+        status__in=["Pending", "Finance Pending", "Approved"]
+    ).filter(
+        Q(grns__isnull=True) | ~Q(grns__status="COMPLETED")
+    ).distinct().exists()
+
+    if active_pr_exists:
+        logger.info("Reorder skipped for %s — active PR or open PO already in-flight.", product.product_id)
         return
 
-    best = get_best_vendor(product)
+    best = get_best_vendor(product, preferred_vendor_id)
     if not best:
         logger.warning("Reorder skipped for %s — no vendor available.", product.product_id)
         return
@@ -253,6 +309,13 @@ def check_reorder(product):
     final_base_units   = reorder_cartons * carton_size
     total_amount       = reorder_cartons * float(product.carton_price)
 
+    # ── Automation Logic ──
+    # Low-value auto-reorders are pre-approved to speed up supply chain.
+    if total_amount > APPROVAL_THRESHOLD:
+        final_status = "Finance Pending"
+    else:
+        final_status = "Approved"
+
     with transaction.atomic():
         pr = PurchaseRequest.objects.create(
             product            = product,
@@ -264,18 +327,24 @@ def check_reorder(product):
             recommended_score  = best["score"],
             chosen_score       = best["score"],
             vendor_warning     = False,
-            status             = "Pending",
+            status             = final_status,
             is_auto_generated  = True,
             created_by         = None,
         )
 
+        po = None
+        if final_status == "Approved":
+            po = create_po_from_pr(pr)
+            send_po_email(po)
+
         # ── Automated Notification ──
+        target_role = "finance_director" if final_status == "Finance Pending" else "inventory_manager"
         notify_role(
             sender=None,  # System generated
-            recipient_role_name="inventory_manager",
+            recipient_role_name=target_role,
             notification_type="inventory",
             title=f"Low Stock Auto-PR: {product.product_name}",
-            message=f"Stock ({total_stock}) below threshold ({threshold}). Auto-PR {pr.pr_id} created for {reorder_cartons} cartons.",
+            message=f"Stock ({total_stock}) below threshold ({threshold}). PR {pr.pr_id} created ({final_status}).",
             redirect_url="/purchase-requests"
         )
 
@@ -327,10 +396,9 @@ def assign_bin(product, quantity_units: int, exclude_bin_id: str | None = None) 
             bins = bins.filter(shelf__rack__zone__zone_type=zone_type)
         else:
             raise ValueError(
-                f"Product {product.product_id} ({product.product_name}) has no zone "
-                "assigned and its category has no zone_type mapping. "
-                "Assign a zone via PATCH /api/products/<id>/assign-zone/ "
-                "or create a Category mapping for this product's category."
+                f"Product '{product.product_name}' (Category: '{product.category}') has no zone "
+                "assigned and its category has no zone_type mapping in the Category master. "
+                "Please assign a zone to the product or create a Category entry with a zone_type."
             )
 
     if required_pos:

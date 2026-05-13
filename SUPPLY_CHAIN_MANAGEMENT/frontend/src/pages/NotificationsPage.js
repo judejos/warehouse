@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { 
-  Bell, Search, Filter, CheckCheck, Clock, 
-  Trash2, Package, ClipboardList, CheckCircle, 
+  Bell, Search, CheckCheck, Clock, 
+  Package, ClipboardList, CheckCircle, 
   AlertTriangle, DollarSign, Info, ChevronRight,
-  ArrowLeft, RefreshCw
+  RefreshCw
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { 

@@ -3,10 +3,8 @@ import { Card, CardContent } from "../components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import {
   Search, Loader2, RefreshCw, Download, ScanLine, CheckCircle,
   Package, AlertTriangle, ChevronDown, ChevronRight,
@@ -15,7 +13,6 @@ import { useToast } from "../components/ui/use-toast";
 import {
   listGRNs,
   getGRNItems,
-  getGRNSummary,
 } from "../services/apiService";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
@@ -364,7 +361,6 @@ function InventoryLogger() {
   const [activeItemId, setActiveItemId] = useState(null);
   const [qtyInput, setQtyInput]       = useState("");
   const [scanError, setScanError]     = useState("");
-  const [submitting, setSubmitting]   = useState(false);
   const scanRef = useRef(null);
 
   useEffect(() => {

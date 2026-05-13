@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  X, Send, ChevronDown, ClipboardList, CheckCircle,
+  X, Send, ClipboardList, CheckCircle,
   Package, AlertTriangle, DollarSign, Info, Loader2
 } from "lucide-react";
 import { sendNotification, fetchAllowedRecipients } from "../services/notificationService";
@@ -74,8 +74,6 @@ export default function SendNotificationModal({ onClose, onSent }) {
     if (e.target === e.currentTarget) onClose();
   }
 
-  const selectedTypeConfig = TYPE_OPTIONS.find(t => t.value === notifType) || TYPE_OPTIONS[6];
-  const TypeIcon = selectedTypeConfig.icon;
 
   async function handleSend(e) {
     e.preventDefault();

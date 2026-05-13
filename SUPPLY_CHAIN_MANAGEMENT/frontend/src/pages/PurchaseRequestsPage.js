@@ -461,8 +461,8 @@ export default function PurchaseRequestsPage() {
   };
 
   // ── Permission helpers ───────────────────────────────────────────────────
-  const canManagerApprove = (pr) => pr.status === "Pending" && isManager;
-  const canManagerReject  = (pr) => pr.status === "Pending" && isManager;
+  const canManagerApprove = (pr) => pr.status === "Pending" && isManager && pr.is_auto_generated;
+  const canManagerReject  = (pr) => pr.status === "Pending" && isManager && pr.is_auto_generated;
   const canFinanceAct     = (pr) => pr.status === "Finance Pending" && isFinance;
 
   const q = search.toLowerCase();
@@ -501,13 +501,15 @@ export default function PurchaseRequestsPage() {
           >
             <RefreshCw className={`w-3.5 h-3.5 text-gray-500 ${isLoading ? "animate-spin" : ""}`} />
           </button>
-          <Button
-            size="sm"
-            className="h-9 bg-[#1E3A8A] hover:bg-[#1E293B]"
-            onClick={() => { setNewPR(EMPTY_PR); setCreateOpen(true); }}
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> Create PR
-          </Button>
+          {user?.role !== "finance_director" && (
+            <Button
+              size="sm"
+              className="h-9 bg-[#1E3A8A] hover:bg-[#1E293B]"
+              onClick={() => { setNewPR(EMPTY_PR); setCreateOpen(true); }}
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> Create PR
+            </Button>
+          )}
         </div>
       </div>
 

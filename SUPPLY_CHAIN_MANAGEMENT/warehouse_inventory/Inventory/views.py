@@ -37,6 +37,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from products.models import Product
 from .models import (
     ASN,
     ASNItem,
@@ -82,51 +83,14 @@ from .utils import (
     get_or_create_batch,
     lookup_product_by_barcode,
     score_vendors_for_product,
+    APPROVAL_THRESHOLD,
+    create_po_from_pr,
+    send_po_email,
 )
 from rbac.utils import notify_role
 
 logger = logging.getLogger(__name__)
 
-# PRs above this amount go to Finance Director for approval
-APPROVAL_THRESHOLD = 5000
-
-
-# ─────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────
-
-def send_po_email(po: PurchaseOrder) -> None:
-    """Non-blocking PO notification email to vendor."""
-    try:
-        send_mail(
-            subject=f"Purchase Order {po.po_id}",
-            message=(
-                f"Purchase Order : {po.po_id}\n"
-                f"Product        : {po.pr.product.product_name}\n"
-                f"Quantity       : {po.order_quantity} {po.pr.product.base_unit}s "
-                f"({po.order_cartons} {po.pr.product.purchase_unit}s)\n"
-                f"Total Amount   : ₹{po.total_amount}\n"
-            ),
-            from_email=settings.EMAIL_HOST_USER,
-            recipient_list=[po.vendor.email],
-            fail_silently=True,
-        )
-    except Exception:
-        logger.exception("PO email failed for %s", po.po_id)
-
-
-def _create_po_from_pr(pr: PurchaseRequest) -> PurchaseOrder:
-    """Create a PurchaseOrder from an approved PR inside an active atomic block."""
-    return PurchaseOrder.objects.create(
-        pr             = pr,
-        vendor         = pr.vendor,
-        order_cartons  = pr.requested_cartons,
-        order_quantity = pr.requested_quantity,
-        total_amount   = pr.total_amount,
-    )
-
-
-# ─────────────────────────────────────────────
 # ZONE
 # ─────────────────────────────────────────────
 
@@ -791,16 +755,28 @@ class ManualCreatePRView(APIView):
         requested_quantity = int(cartons * carton_size)
         total_amount       = cartons * float(product.carton_price)
 
+        # Manual PRs skip the "Manager Review" step because the creator 
+        # (Supervisor/Manager) already selected the vendor and quantity.
+        if total_amount > APPROVAL_THRESHOLD:
+            final_status = "Finance Pending"
+        else:
+            final_status = "Approved"
+
         pr = PurchaseRequest.objects.create(
             product            = product,
             vendor_id          = vendor_id,
             requested_cartons  = cartons,
             requested_quantity = requested_quantity,
             total_amount       = total_amount,
-            status             = "Pending",
+            status             = final_status,
             is_auto_generated  = False,
             created_by         = request.user,
         )
+
+        po = None
+        if final_status == "Approved":
+            po = create_po_from_pr(pr)
+            send_po_email(po)
 
         # ── Automated Notification ──
         notify_role(
@@ -1063,7 +1039,8 @@ class FinanceApprovePR(APIView):
 
             pr.status = "Approved"
             pr.save()
-            po = _create_po_from_pr(pr)
+            po = create_po_from_pr(pr)
+            send_po_email(po)
 
             # ── Automated Notification ──
             notify_role(
@@ -1923,11 +1900,31 @@ class ConfirmPutawayPlanView(APIView):
         bin_obj     = plan.bin
 
         with transaction.atomic():
+            # ── RE-VERIFY CAPACITY AT CONFIRMATION ──
+            # Re-fetch bin with lock to ensure no concurrent additions
+            locked_bin = Bin.objects.select_for_update().get(bin_id=bin_obj.bin_id)
+            
+            if locked_bin.available_units < qty_placed:
+                return Response(
+                    {"error": f"Bin {locked_bin.bin_id} no longer has enough unit capacity. (Available: {locked_bin.available_units}, Trying to place: {qty_placed})"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if unit_weight and locked_bin.available_weight_kg < (qty_placed * unit_weight):
+                 return Response(
+                    {"error": f"Bin {locked_bin.bin_id} no longer has enough weight capacity."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if unit_volume and locked_bin.available_volume_cm3 < (qty_placed * unit_volume):
+                 return Response(
+                    {"error": f"Bin {locked_bin.bin_id} no longer has enough volume capacity."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             inventory, _ = Inventory.objects.get_or_create(
                 product  = product,
                 vendor   = plan.vendor,
                 batch    = plan.batch,
-                bin      = bin_obj,
+                bin      = locked_bin,
                 defaults = {
                     "quantity":     0,
                     "grn_item":     plan.grn_item,
@@ -1940,16 +1937,16 @@ class ConfirmPutawayPlanView(APIView):
             inventory.putaway_plan = plan
             inventory.save()
 
-            bin_obj.current_load      += qty_placed
-            bin_obj.current_weight_kg += qty_placed * unit_weight
-            bin_obj.used_volume_cm3   += qty_placed * unit_volume
-            bin_obj.save()
+            locked_bin.current_load      += qty_placed
+            locked_bin.current_weight_kg += qty_placed * unit_weight
+            locked_bin.used_volume_cm3   += qty_placed * unit_volume
+            locked_bin.save()
 
             StockMovement.objects.create(
                 product        = product,
                 vendor         = plan.vendor,
                 batch          = plan.batch,
-                bin            = bin_obj,
+                bin            = locked_bin,
                 movement_type  = "INBOUND",
                 quantity       = qty_placed,
                 previous_stock = prev_qty,
@@ -2214,18 +2211,38 @@ class OptimizedOutboundView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        product = get_object_or_404(Product, product_id=product_id)
+
+        vendor_id = request.data.get("vendor_id")
+
+        # Trigger reorder check proactively. This ensures that even if dispatch 
+        # fails due to zero stock, an Auto-PR is still generated.
+        check_reorder(product, vendor_id)
+
         with transaction.atomic():
+            filters = {"product_id": product_id, "quantity__gt": 0}
+            if vendor_id:
+                filters["vendor_id"] = vendor_id
+
             inventories = list(
                 Inventory.objects.select_for_update()
                 .select_related("product", "vendor", "batch", "bin")
-                .filter(product_id=product_id, quantity__gt=0)
+                .filter(**filters)
                 .order_by("bin__distance_from_dispatch", "bin__pick_count")
             )
 
             if not inventories:
+                msg = "No stock available in bins"
+                if vendor_id:
+                    msg += " for the selected supplier"
+                msg += ". An automated reorder check has been performed."
+                
                 return Response(
-                    {"error": "No stock available for this product."},
-                    status=status.HTTP_404_NOT_FOUND,
+                    {
+                        "message": msg,
+                        "reorder_triggered": True
+                    },
+                    status=status.HTTP_200_OK,
                 )
 
             total = sum(inv.quantity for inv in inventories)
@@ -2284,8 +2301,12 @@ class OptimizedOutboundView(APIView):
                 )
                 remaining -= pick_qty
 
-        if inventories:
-            check_reorder(inventories[0].product)
+        # After successful dispatch, check if stock is now low
+        total_remaining = Inventory.objects.filter(product=product).aggregate(
+            s=Sum("quantity")
+        )["s"] or 0
+        
+        low_stock_warning = total_remaining < product.effective_reorder_point
 
         return Response(
             {
@@ -2293,5 +2314,7 @@ class OptimizedOutboundView(APIView):
                 "product_id":         product_id,
                 "requested_quantity": qty,
                 "picked_bins":        picked_bins,
+                "low_stock_warning":  low_stock_warning,
+                "remaining_stock":    total_remaining
             }
         )

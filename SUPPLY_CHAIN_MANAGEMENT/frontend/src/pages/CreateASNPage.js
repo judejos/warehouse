@@ -18,7 +18,7 @@
  *   - expected_quantity IntegerField               REQUIRED
  *   - shipped_quantity  IntegerField               REQUIRED (set = expected initially)
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button }  from "../components/ui/button";
 import { Input }   from "../components/ui/input";

@@ -22,6 +22,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from "../components/ui/dialog";
+import { useAuth } from "../components/lib/auth-context";
 import { listASN, getASN } from "../services/apiService";
 import { useToast } from "../components/ui/use-toast";
 
@@ -214,6 +215,7 @@ function ViewASNDialog({ asn, onClose }) {
 
 /* ══════════════════════════════════════════════ */
 export default function ASNPage() {
+  const { user }   = useAuth();
   const { toast: showToast } = useToast();
   const navigate   = useNavigate();
 
@@ -276,14 +278,16 @@ export default function ASNPage() {
           <Button size="sm" variant="outline" className="h-9" onClick={loadASNs}>
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
           </Button>
-          <Button
-            id="new-asn-btn"
-            size="sm"
-            className="h-9 bg-[#1E3A8A] hover:bg-[#162d6e]"
-            onClick={() => navigate("/asn/create")}
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> New ASN
-          </Button>
+          {user?.role !== "manager" && (
+            <Button
+              id="new-asn-btn"
+              size="sm"
+              className="h-9 bg-[#1E3A8A] hover:bg-[#162d6e]"
+              onClick={() => navigate("/asn/create")}
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> New ASN
+            </Button>
+          )}
         </div>
       </div>
 

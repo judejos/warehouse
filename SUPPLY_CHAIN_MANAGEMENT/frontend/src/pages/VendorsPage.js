@@ -298,7 +298,7 @@ export default function VendorsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 

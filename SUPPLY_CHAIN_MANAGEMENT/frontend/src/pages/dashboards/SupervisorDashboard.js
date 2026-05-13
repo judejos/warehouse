@@ -15,7 +15,7 @@ export default function SupervisorDashboard({ stats, outboundStats, recentActivi
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
           { label: "QC Awaiting", value: stats.pendingQC, icon: ClipboardCheck, color: "text-amber-600", bg: "bg-amber-50" },
-          { label: "Pending Dispatch", value: outboundStats.pending, icon: Truck, color: "text-blue-600", bg: "bg-blue-50" },
+          { label: "Incoming Orders", value: outboundStats.pending, icon: Truck, color: "text-blue-600", bg: "bg-blue-50" },
           { label: "GRNs Today", value: stats.grnToday, icon: ListChecks, color: "text-emerald-600", bg: "bg-emerald-50" },
           { label: "Shipped Today", value: outboundStats.shippedToday, icon: Package, color: "text-purple-600", bg: "bg-purple-50" },
         ].map((kpi, i) => (
@@ -71,8 +71,8 @@ export default function SupervisorDashboard({ stats, outboundStats, recentActivi
                       <Truck className="w-5 h-5" />
                     </div>
                     <div className="text-left">
-                      <p className="text-sm font-bold text-slate-800">Pending Dispatch</p>
-                      <p className="text-xs text-slate-500">Outgoing order fulfillment</p>
+                      <p className="text-sm font-bold text-slate-800">Incoming Orders</p>
+                      <p className="text-xs text-slate-500">View POs awaiting receipt</p>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 transition-all" />

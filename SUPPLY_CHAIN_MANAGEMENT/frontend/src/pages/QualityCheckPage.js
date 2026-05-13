@@ -5,7 +5,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
   Search, CheckCircle, Loader2, RefreshCw, ChevronDown, ChevronRight,
-  AlertTriangle, Package, Printer, Camera, X, Image as ImageIcon
+  AlertTriangle, Package, Printer, Camera, X
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
