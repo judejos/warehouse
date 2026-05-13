@@ -63,3 +63,42 @@ class Supplier(models.Model):
 
     def __str__(self):
         return f"{self.supplier_id} - {self.supplier_name}"
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=Supplier)
+def sync_supplier_to_vendor(sender, instance, created, **kwargs):
+    """Automatically sync Supplier records to Vendor table for procurement integration."""
+    try:
+        from vendors.models import Vendor
+        # Match by name or email
+        vendor = None
+        if instance.email:
+            vendor = Vendor.objects.filter(email=instance.email).first()
+        
+        if not vendor:
+            vendor = Vendor.objects.filter(vendor_name=instance.supplier_name).first()
+
+        vendor_data = {
+            "vendor_name":    instance.supplier_name,
+            "contact_person": instance.contact_personname or "",
+            "email":          instance.email,
+            "phone":          instance.phone or "",
+            "address":        instance.address or "",
+            "city":           instance.city or "",
+            "state":          instance.state or "",
+            "country":        instance.country or "India",
+            "is_active":      instance.is_active,
+        }
+
+        if not vendor:
+            Vendor.objects.create(**vendor_data)
+        else:
+            for key, value in vendor_data.items():
+                setattr(vendor, key, value)
+            vendor.save()
+    except Exception as e:
+        # Prevent sync errors from breaking the main supplier save
+        import logging
+        logging.getLogger(__name__).error(f"Supplier-Vendor sync failed: {e}")
