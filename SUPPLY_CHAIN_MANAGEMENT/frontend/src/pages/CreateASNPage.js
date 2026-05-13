@@ -256,15 +256,13 @@ export default function CreateASNPage() {
               <div className="grid grid-cols-2 gap-4">
                 {/* ASN Number */}
                 <div className="col-span-2">
-                  <Label className="text-xs font-semibold">ASN Number <span className="text-[10px] text-gray-400 font-normal">(Optional — will auto-generate if blank)</span></Label>
+                  <Label className="text-xs font-semibold">ASN Number</Label>
                   <Input
                     id="asn_number"
-                    placeholder="Leave blank to auto-generate (e.g. ASN-2026-0001)"
-                    value={form.asn_number}
-                    onChange={e => setField("asn_number", e.target.value)}
-                    className={`mt-1 h-9 ${touched.asn_number && errors.asn_number ? "border-red-400" : ""}`}
+                    disabled
+                    value="Auto-generated upon creation"
+                    className="mt-1 h-9 bg-gray-100 text-gray-500 italic cursor-not-allowed"
                   />
-                  <FieldError msg={touched.asn_number && errors.asn_number} />
                 </div>
 
                 {/* Purchase Order */}

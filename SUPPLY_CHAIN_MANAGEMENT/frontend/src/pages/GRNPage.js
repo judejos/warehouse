@@ -252,11 +252,10 @@ function SupervisorPanel({ poList, asnList, existingGRNs, onGRNCreated }) {
                     </button>
                   </div>
                   <Input
-                    placeholder="Auto-generated or enter manually"
+                    placeholder="Auto-generated on PO selection"
                     value={grnForm.grn_number}
-                    onChange={e => setGrnForm(f => ({ ...f, grn_number: e.target.value }))}
-                    className="h-9 text-sm border-gray-300"
-                    required
+                    disabled
+                    className="h-9 text-sm bg-gray-100 text-gray-600 font-mono cursor-not-allowed border-gray-300"
                   />
                 </div>
                 <div className="grid gap-1.5">
