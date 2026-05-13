@@ -40,7 +40,7 @@ function DispatchDialog({ onClose, onSuccess }) {
   const [products, setProducts]     = useState([]);
   const [loadingProd, setLoadingProd] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState("");
-  const [selectedVendor, setSelectedVendor] = useState("");
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [vendorStocks, setVendorStocks] = useState([]);
   const [quantity, setQuantity]     = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -73,28 +73,32 @@ function DispatchDialog({ onClose, onSuccess }) {
         const vendorsData = await listVendors();
         const allVendorsList = vendorsData?.results || vendorsData || [];
 
-        let stockData = [];
+        let stockData = null;
         if (selectedProduct) {
           // 3. Get current stock for the selected product across all vendors
           stockData = await getProductStockByVendor(selectedProduct);
         }
+        const byVendorList = stockData?.by_vendor || [];
         
         // Map them together
         const combined = allSuppliersList.map(s => {
-          // Find the corresponding vendor by name to get the ID the backend needs
-          const matchingVendor = allVendorsList.find(v => v.vendor_name === s.supplier_name);
-          const stock = (stockData || []).find(sd => sd.vendor_id === matchingVendor?.vendor_id);
+          // Find the corresponding vendor by name or email to get the ID the backend needs
+          const matchingVendor = allVendorsList.find(v => 
+            v.vendor_name?.trim().toLowerCase() === s.supplier_name?.trim().toLowerCase() ||
+            (v.email && s.email && v.email.trim().toLowerCase() === s.email.trim().toLowerCase())
+          );
+          const stock = byVendorList.find(sd => sd.vendor_id === matchingVendor?.vendor_id);
           
           return {
             supplier_id: s.supplier_id,
             supplier_name: s.supplier_name,
             vendor_id: matchingVendor?.vendor_id || "", // Internal ID for backend
-            total_quantity: stock ? stock.total_quantity : 0
+            total_quantity: stock ? stock.total_qty : 0
           };
         });
 
         setVendorStocks(combined);
-        if (!selectedProduct) setSelectedVendor("");
+        if (!selectedProduct) setSelectedSupplierId("");
       } catch (err) {
         console.error("Failed to fetch suppliers:", err);
       }
@@ -114,11 +118,12 @@ function DispatchDialog({ onClose, onSuccess }) {
       toast({ title: "Required", description: "Please enter a valid quantity (> 0).", variant: "destructive" });
       return;
     }
+    const selectedSupplierObj = vendorStocks.find(vs => vs.supplier_id === selectedSupplierId);
     setSubmitting(true);
     try {
       const res = await outboundPick(selectedProduct, { 
         quantity: qty,
-        vendor_id: selectedVendor || null
+        vendor_id: selectedSupplierObj?.vendor_id || null
       });
       setResult(res);
       onSuccess();
@@ -280,16 +285,16 @@ function DispatchDialog({ onClose, onSuccess }) {
                       vendorStocks.map((vs) => (
                         <div
                           key={vs.supplier_id}
-                          onClick={() => setSelectedVendor(vs.vendor_id === selectedVendor ? "" : vs.vendor_id)}
+                          onClick={() => setSelectedSupplierId(vs.supplier_id === selectedSupplierId ? "" : vs.supplier_id)}
                           className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-all ${
-                            selectedVendor === vs.vendor_id
+                            selectedSupplierId === vs.supplier_id
                               ? "border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600 shadow-sm"
                               : "border-slate-200 hover:border-slate-300 bg-white"
                           }`}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                              selectedVendor === vs.vendor_id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"
+                              selectedSupplierId === vs.supplier_id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"
                             }`}>
                               <User className="w-4 h-4" />
                             </div>
@@ -300,7 +305,7 @@ function DispatchDialog({ onClose, onSuccess }) {
                               </p>
                             </div>
                           </div>
-                          {selectedVendor === vs.vendor_id && (
+                          {selectedSupplierId === vs.supplier_id && (
                             <CheckCircle2 className="w-4 h-4 text-indigo-600" />
                           )}
                         </div>
@@ -340,7 +345,7 @@ function DispatchDialog({ onClose, onSuccess }) {
               <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
               <Button
                 onClick={handleDispatch}
-                disabled={submitting || !selectedProduct || !quantity || !selectedVendor}
+                disabled={submitting || !selectedProduct || !quantity || !selectedSupplierId}
                 className="bg-[#1E3A8A] hover:bg-[#162d6e]"
               >
                 {submitting
