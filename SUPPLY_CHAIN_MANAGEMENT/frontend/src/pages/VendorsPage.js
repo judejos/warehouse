@@ -33,6 +33,7 @@ import {
   Phone, Mail, Clock, MapPin, CheckCircle2, XCircle,
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 import {
   listVendors,
   deleteVendor,
@@ -50,8 +51,7 @@ const toArr = (res, key) => {
   return Object.values(res).find(Array.isArray) || [];
 };
 
-const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmtDate = (d) => formatDateDDMMYYYY(d);
 
 const fmtMoney = (v) =>
   v != null ? `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";

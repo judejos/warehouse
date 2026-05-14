@@ -14,6 +14,7 @@ import {
   listGRNs,
   getGRNItems,
 } from "../services/apiService";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 const toArr = (res, key) => {
@@ -25,8 +26,7 @@ const toArr = (res, key) => {
   return Object.values(res).find(Array.isArray) || [];
 };
 
-const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmtDate = (d) => formatDateDDMMYYYY(d);
 
 const fmtTime = (d) =>
   d ? new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—";

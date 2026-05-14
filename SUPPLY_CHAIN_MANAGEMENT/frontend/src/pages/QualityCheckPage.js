@@ -17,6 +17,7 @@ import {
   approveGRN,
   getGRNSummary,
 } from "../services/apiService";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 const toArr = (res) => {
@@ -27,14 +28,7 @@ const toArr = (res) => {
   return Object.values(res).find(Array.isArray) || [];
 };
 
-const fmtDate = (d) =>
-  d
-    ? new Date(d).toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-    : "—";
+const fmtDate = (d) => formatDateDDMMYYYY(d);
 
 // ─── Print sheet builder ──────────────────────────────────────────────────
 // Opens a new browser window with a clean, print-ready barcode log sheet.

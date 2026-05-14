@@ -4,8 +4,8 @@ import { STORAGE_KEYS } from "./constants";
    Format Date
 --------------------------------*/
 export const formatDate = (dateString) => {
+  if (!dateString) return "—";
   const date = new Date(dateString);
-
   return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -13,6 +13,13 @@ export const formatDate = (dateString) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+export const formatDateDDMMYYYY = (dateString) => {
+  if (!dateString) return "—";
+  const date = new Date(dateString);
+  // Returns DD/MM/YYYY
+  return date.toLocaleDateString("en-GB");
 };
 
 /* ------------------------------

@@ -38,6 +38,7 @@ import {
   FileText, CheckCircle2, XCircle, Globe, Star,
 } from "lucide-react";
 import { useToast } from "../components/ui/use-toast";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 import { useAuth } from "../components/lib/auth-context";
 import {
   listProducts,
@@ -65,8 +66,7 @@ const toArray = (res, key) => {
 };
 const fmt = (v, decimals = 2) =>
   v != null ? Number(v).toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) : "—";
-const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmtDate = (d) => formatDateDDMMYYYY(d);
 const normalizeCategoryName = (value) => String(value ?? "").trim().toLowerCase();
 
 /* ════════════════════════════════════════════════════════════

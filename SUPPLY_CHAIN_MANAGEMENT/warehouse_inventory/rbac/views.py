@@ -417,20 +417,23 @@ class AdminCreateUserView(APIView):
             is_first_login=True,
         )
 
-        send_mail(
-            subject="Your WMS Account Credentials",
-            message=(
-                f"Hello {first_name or username},\n\n"
-                f"Your account has been created.\n\n"
-                f"Employee ID : {employee_id}\n"
-                f"Password    : {password}\n"
-                f"Role        : {role.get_name_display()}\n\n"
-                f"You will be prompted to change your password on first login.\n\n"
-                f"- WMS Team"
-            ),
-            from_email=None,
-            recipient_list=[email],
-        )
+        try:
+            send_mail(
+                subject="Your WMS Account Credentials",
+                message=(
+                    f"Hello {first_name or username},\n\n"
+                    f"Your account has been created.\n\n"
+                    f"Employee ID : {employee_id}\n"
+                    f"Password    : {password}\n"
+                    f"Role        : {role.get_name_display()}\n\n"
+                    f"You will be prompted to change your password on first login.\n\n"
+                    f"- WMS Team"
+                ),
+                from_email=None,
+                recipient_list=[email],
+            )
+        except Exception as e:
+            print(f"Failed to send email to {email}: {e}")
 
         return Response(
             {
@@ -664,10 +667,14 @@ class ListNotificationsView(APIView):
 
         data = []
         for n in notifications:
+            sender_name = "System"
+            if n.sender:
+                sender_name = n.sender.get_full_name() or n.sender.username
+
             data.append({
                 "id":                n.id,
-                "sender_name":      n.sender.get_full_name() or n.sender.username,
-                "sender_role":      n.sender_role,
+                "sender_name":      sender_name,
+                "sender_role":      n.sender_role or "system",
                 "recipient_role":   n.recipient_role,
                 "notification_type": n.notification_type,
                 "title":            n.title,

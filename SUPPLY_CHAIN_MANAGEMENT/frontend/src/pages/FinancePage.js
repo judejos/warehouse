@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { useToast } from "../components/ui/use-toast";
 import { listPurchaseRequests, listPurchaseOrders } from "../services/apiService";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 export default function FinancePage() {
   const { toast } = useToast();
@@ -78,7 +79,7 @@ export default function FinancePage() {
       item.type,
       item.amount,
       item.status,
-      item.date ? new Date(item.date).toLocaleDateString() : "",
+      formatDateDDMMYYYY(item.date),
       item.reference,
     ]);
     const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
@@ -160,7 +161,7 @@ export default function FinancePage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {item.date ? new Date(item.date).toLocaleDateString() : "-"}
+                    {formatDateDDMMYYYY(item.date)}
                   </TableCell>
                   {/* <TableCell className="text-xs">{item.reference}</TableCell> */}
                 </TableRow>

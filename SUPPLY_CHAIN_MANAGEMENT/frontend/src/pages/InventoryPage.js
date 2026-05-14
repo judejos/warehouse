@@ -56,6 +56,7 @@ import {
   listBatches,
   listProducts,
 } from "../services/apiService";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 /* ── helpers ── */
 const toArr = (res, key) => {
@@ -67,9 +68,9 @@ const toArr = (res, key) => {
   return Object.values(res).find(Array.isArray) || [];
 };
 
-const fmt    = (n, d = 0) => n != null ? Number(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d }) : "—";
-const fmtDate  = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-const fmtDt    = (d) => d ? new Date(d).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "—";
+const fmt      = (n, d = 0) => n != null ? Number(n).toLocaleString("en-IN", { minimumFractionDigits: d, maximumFractionDigits: d }) : "—";
+const fmtDate  = (d) => formatDateDDMMYYYY(d);
+const fmtDt    = (d) => d ? new Date(d).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" }) : "—";
 
 /* ── Classification badge ── */
 const CLR = {

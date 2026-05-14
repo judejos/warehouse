@@ -29,6 +29,7 @@ import {
   supervisorScanBarcode,
   supervisorAddGRNItem,
 } from "../services/apiService";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 const toArr = (res, key) => {
@@ -40,8 +41,7 @@ const toArr = (res, key) => {
   return Object.values(res).find(Array.isArray) || [];
 };
 
-const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmtDate = (d) => formatDateDDMMYYYY(d);
 
 const STATUS_META = {
   RECEIVED:        { label: "Received",         cls: "bg-blue-100 text-blue-700 border-blue-200" },

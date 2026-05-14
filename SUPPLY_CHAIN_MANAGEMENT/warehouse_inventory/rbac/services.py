@@ -6,9 +6,38 @@ from datetime import timedelta
 from .models import OTP
 import string
 
-def generate_random_password(length=10):
-    characters = string.ascii_letters + string.digits
-    return ''.join(random.choice(characters) for _ in range(length))
+def generate_random_password(length=12):
+    """
+    Generates a secure random password containing at least:
+    - 1 lowercase letter
+    - 1 uppercase letter
+    - 1 digit
+    - 1 special character (@#$%^&*)
+    """
+    if length < 4:
+        length = 12
+        
+    lowercase = string.ascii_lowercase
+    uppercase = string.ascii_uppercase
+    digits = string.digits
+    special = "@#$%^&*"
+    
+    # Guarantee at least one of each
+    password = [
+        random.choice(lowercase),
+        random.choice(uppercase),
+        random.choice(digits),
+        random.choice(special)
+    ]
+    
+    # Fill the rest randomly
+    all_chars = lowercase + uppercase + digits + special
+    password += [random.choice(all_chars) for _ in range(length - 4)]
+    
+    # Shuffle the list so the guaranteed chars aren't always at the start
+    random.shuffle(password)
+    
+    return "".join(password)
 
 
 
@@ -51,9 +80,12 @@ def send_otp_email(email, purpose):
         is_used=False
     )
 
-    send_mail(
-        subject="Your OTP Code",
-        message=f"Your OTP is {otp_code}. It expires in 5 minutes.",
-        from_email=None,
-        recipient_list=[email],
-    )
+    try:
+        send_mail(
+            subject="Your OTP Code",
+            message=f"Your OTP is {otp_code}. It expires in 5 minutes.",
+            from_email=None,
+            recipient_list=[email],
+        )
+    except Exception as e:
+        print(f"Failed to send email: {e}")

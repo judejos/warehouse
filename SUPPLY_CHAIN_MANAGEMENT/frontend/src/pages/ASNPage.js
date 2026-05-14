@@ -25,6 +25,7 @@ import {
 import { useAuth } from "../components/lib/auth-context";
 import { listASN, getASN } from "../services/apiService";
 import { useToast } from "../components/ui/use-toast";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 /* ── helpers ── */
 const toArray = (res, knownKey = null) => {
@@ -103,8 +104,8 @@ function printASN(asn) {
     <div class="field"><label>ASN Number</label><p>${asn.asn_number ?? "—"}</p></div>
     <div class="field"><label>Purchase Order</label><p>${asn.po_id ?? asn.po ?? "—"}</p></div>
     <div class="field"><label>Vendor</label><p>${asn.vendor_name ?? "—"}</p></div>
-    <div class="field"><label>Shipment Date</label><p>${asn.shipment_date ? new Date(asn.shipment_date).toLocaleDateString() : "—"}</p></div>
-    <div class="field"><label>Expected Arrival</label><p>${asn.expected_arrival_date ? new Date(asn.expected_arrival_date).toLocaleDateString() : "—"}</p></div>
+    <div class="field"><label>Shipment Date</label><p>${formatDateDDMMYYYY(asn.shipment_date)}</p></div>
+    <div class="field"><label>Expected Arrival</label><p>${formatDateDDMMYYYY(asn.expected_arrival_date)}</p></div>
     <div class="field"><label>Vehicle No.</label><p>${asn.vehicle_num ?? "—"}</p></div>
     <div class="field"><label>Driver Name</label><p>${asn.driver_name ?? "—"}</p></div>
     <div class="field"><label>Driver Phone</label><p>${asn.driver_phone ?? "—"}</p></div>
@@ -168,8 +169,8 @@ function ViewASNDialog({ asn, onClose }) {
               ["ASN Number",       asn.asn_number],
               ["PO",               asn.po_id ?? asn.po],
               ["Vendor",           asn.vendor_name],
-              ["Shipment Date",    asn.shipment_date ? new Date(asn.shipment_date).toLocaleDateString() : "—"],
-              ["Expected Arrival", asn.expected_arrival_date ? new Date(asn.expected_arrival_date).toLocaleDateString() : "—"],
+              ["Shipment Date",    formatDateDDMMYYYY(asn.shipment_date)],
+              ["Expected Arrival", formatDateDDMMYYYY(asn.expected_arrival_date)],
               ["Vehicle No.",      asn.vehicle_num ?? "—"],
               ["Driver Name",      asn.driver_name ?? "—"],
               ["Driver Phone",     asn.driver_phone ?? "—"],
@@ -333,10 +334,10 @@ export default function ASNPage() {
                     <TableCell className="text-sm">{asn.vendor_name || "—"}</TableCell>
                     <TableCell className="text-xs text-right tabular-nums">{asn.items?.length ?? 0}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {asn.shipment_date ? new Date(asn.shipment_date).toLocaleDateString() : "—"}
+                      {formatDateDDMMYYYY(asn.shipment_date)}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {asn.expected_arrival_date ? new Date(asn.expected_arrival_date).toLocaleDateString() : "—"}
+                      {formatDateDDMMYYYY(asn.expected_arrival_date)}
                     </TableCell>
                     <TableCell className="text-xs">{asn.driver_name || "—"}</TableCell>
                     <TableCell className="text-xs font-mono">{asn.vehicle_num || "—"}</TableCell>

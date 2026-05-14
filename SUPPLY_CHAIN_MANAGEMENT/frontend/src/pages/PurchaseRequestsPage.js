@@ -36,6 +36,7 @@ import {
   updatePurchaseRequest, // you may need to add this to apiService if not present
 } from "../services/apiService";
 import { useToast } from "../components/ui/use-toast";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 const toArray = (res, knownKey = null) => {
@@ -562,7 +563,7 @@ export default function PurchaseRequestsPage() {
                     </TableCell>
                     <TableCell className="text-xs text-gray-600">{pr.vendor_name || "-"}</TableCell>
                     <TableCell className="text-xs text-gray-500">
-                      {pr.created_at ? new Date(pr.created_at).toLocaleDateString() : "-"}
+                      {formatDateDDMMYYYY(pr.created_at)}
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -716,7 +717,7 @@ export default function PurchaseRequestsPage() {
             <DialogTitle className="text-xl font-bold text-gray-900">Purchase Request Details</DialogTitle>
             <DialogDescription>
               PR #{detailPR?.pr_id} — Created on{" "}
-              {detailPR?.created_at ? new Date(detailPR.created_at).toLocaleString() : "—"}
+              {formatDateDDMMYYYY(detailPR?.created_at)}
               {detailPR?.is_auto_generated && (
                 <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-[10px] font-semibold">
                   Auto-generated

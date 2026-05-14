@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { 
   fetchNotifications, markRead, markAllRead, fetchSentNotifications 
 } from "../services/notificationService";
+import { formatDateDDMMYYYY } from "../components/utils/helpers";
 
 const TYPE_CONFIG = {
   task:      { icon: ClipboardList, color: "#6366f1", bg: "#eef2ff", label: "Task" },
@@ -25,14 +26,11 @@ function roleLabel(role) {
 }
 
 function formatDate(iso) {
+  if (!iso) return "—";
   const date = new Date(iso);
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  const dateStr = date.toLocaleDateString("en-GB"); // dd/mm/yyyy
+  const timeStr = date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return `${dateStr} ${timeStr}`;
 }
 
 export default function NotificationsPage() {
