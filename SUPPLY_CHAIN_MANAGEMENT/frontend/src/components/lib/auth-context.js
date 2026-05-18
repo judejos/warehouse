@@ -47,6 +47,7 @@ export function AuthProvider({ children }) {
           email:       email || response.email,
           role:        normalizeRole(response.role) || "admin",
           isFirstLogin: false,
+          username:    response.username || "",
         };
 
         sessionStorage.setItem("accessToken",  response.access);
@@ -97,6 +98,7 @@ export function AuthProvider({ children }) {
         email:       response.email,
         role:        normalizeRole(response.role),
         isFirstLogin: response.force_change_password || false,
+        username:    response.username || "",
       };
 
       // Persist JWT tokens — used by apiRequest via Authorization header

@@ -222,6 +222,10 @@ class VerifyLoginOTPView(APIView):
                 "force_change_password": user_role.is_first_login,
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
+                "username": user.username,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email": user.email,
             },
             status=status.HTTP_200_OK,
         )

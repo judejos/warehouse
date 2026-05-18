@@ -55,5 +55,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             token["is_first_login"] = user.user_role.is_first_login
 
         token["email"] = user.email
+        token["username"] = user.username
 
         return token

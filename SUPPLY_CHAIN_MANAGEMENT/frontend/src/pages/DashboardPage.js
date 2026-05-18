@@ -93,13 +93,73 @@ export default function DashboardPage() {
       const inventoryData = getValue(inventoryRes);
 
       const productList  = toArray(productsData, "products");
-      const prList       = toArray(prsData);
-      const poList       = toArray(posData);
-      const asnList      = toArray(asnData);
-      const grnList      = toArray(grnsData);
-      const grnItemsList = toArray(grnItemsData);
-      const movementList = toArray(movementsData);
-      const inventoryList = toArray(inventoryData);
+      let prList       = toArray(prsData);
+      let poList       = toArray(posData);
+      let asnList      = toArray(asnData);
+      let grnList      = toArray(grnsData);
+      let grnItemsList = toArray(grnItemsData);
+      let movementList = toArray(movementsData);
+      let inventoryList = toArray(inventoryData);
+
+      // Filter data for non-admin users to show only their own actions/records
+      if (user && user.role !== "admin") {
+        const usernameLower = (user.username || "").toLowerCase();
+        const userId = user.id;
+
+        // 1. Filter PRs: Created by this user
+        prList = prList.filter(pr => 
+          pr.created_by_username?.toLowerCase() === usernameLower ||
+          String(pr.created_by) === String(userId)
+        );
+
+        // 2. Filter POs: Linked to this user's PRs
+        const myPrIds = new Set(prList.map(pr => pr.pr_id));
+        poList = poList.filter(po => 
+          myPrIds.has(po.pr_id) || 
+          myPrIds.has(po.pr)
+        );
+
+        // 3. Filter ASNs: Linked to this user's POs
+        const myPoIds = new Set(poList.map(po => po.po_id));
+        asnList = asnList.filter(asn => 
+          myPoIds.has(asn.po_id) || 
+          myPoIds.has(asn.po)
+        );
+
+        // 4. Filter GRNs: Received by this user (supervisor), verified by this user (QC), or linked to this user's POs (manager)
+        grnList = grnList.filter(grn => 
+          grn.received_by_username?.toLowerCase() === usernameLower ||
+          grn.qc_verified_by_username?.toLowerCase() === usernameLower ||
+          myPoIds.has(grn.po_id)
+        );
+
+        // 5. Filter GRN Items: Linked to this user's GRNs, or rejection confirmed by this user
+        const myGrnIds = new Set(grnList.map(g => g.grn_id));
+        grnItemsList = grnItemsList.filter(item => 
+          myGrnIds.has(item.grn) || 
+          myGrnIds.has(item.grn_id) ||
+          item.rejection_confirmed_by_username?.toLowerCase() === usernameLower
+        );
+
+        // 6. Filter Stock Movements & Inventory based on products in their PRs or GRN Items
+        const myProductIds = new Set([
+          ...prList.map(pr => pr.product || pr.product_id),
+          ...grnItemsList.map(item => item.product || item.product_id)
+        ].filter(Boolean));
+
+        if (myProductIds.size > 0) {
+          movementList = movementList.filter(m => 
+            myProductIds.has(m.product) || 
+            myProductIds.has(String(m.product)) ||
+            myProductIds.has(m.product_id) ||
+            myProductIds.has(String(m.product_id))
+          );
+          inventoryList = inventoryList.filter(row => {
+            const pid = row.product || row.product_id || row.product?.product_id;
+            return myProductIds.has(pid) || myProductIds.has(String(pid));
+          });
+        }
+      }
 
       const isToday = (dateStr) => {
         if (!dateStr) return false;

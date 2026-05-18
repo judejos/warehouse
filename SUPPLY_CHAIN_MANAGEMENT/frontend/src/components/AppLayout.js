@@ -5,6 +5,7 @@ import { useAuth } from "../components/lib/auth-context";
 import { LogOut } from "lucide-react";
 import { Outlet, useLocation } from "react-router-dom";
 import NotificationBell from "./NotificationBell";
+import { listEmployees } from "../services/apiService";
 
 
 /* First letter of the role string, upper-cased.
@@ -15,10 +16,31 @@ function roleInitial(role) {
 }
 
 export function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, setUser } = useAuth();
   const location = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef(null);
+
+  /* Auto-sync user details if username is missing from old session storage */
+  useEffect(() => {
+    if (user && !user.username) {
+      listEmployees()
+        .then((employees) => {
+          const current = employees.find((emp) => emp.employee_id === user.id);
+          if (current) {
+            const updated = {
+              ...user,
+              username: current.username,
+              name: current.first_name || current.last_name
+                ? `${current.first_name || ""} ${current.last_name || ""}`.trim()
+                : current.username,
+            };
+            setUser(updated);
+          }
+        })
+        .catch((err) => console.error("Error auto-fetching user details:", err));
+    }
+  }, [user, setUser]);
 
   /* Close dropdown on outside click */
   useEffect(() => {
@@ -102,14 +124,14 @@ export function AppLayout() {
                     {/* User info header */}
                     <div className="px-4 py-3 border-b border-gray-100">
                       <p className="text-sm font-semibold text-gray-900 truncate">
-                        {user?.name || "User"}
+                        {user?.username || user?.name || "User"}
                       </p>
-                      <p className="text-xs text-gray-500 capitalize mt-0.5">
+                      <p className="text-xs text-gray-600 mt-0.5 truncate">
+                        {user?.id || ""}
+                      </p>
+                      <p className="text-xs text-gray-400 capitalize mt-0.5 truncate">
                         {user?.role?.replace(/_/g, " ") || ""}
                       </p>
-                      {user?.email && (
-                        <p className="text-[11px] text-gray-400 mt-0.5 truncate">{user.email}</p>
-                      )}
                     </div>
 
                     {/* Sign Out */}

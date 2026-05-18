@@ -229,7 +229,10 @@ export default function ASNPage() {
     setLoading(true);
     try {
       const data = await listASN();
-      setAsnData(toArray(data));
+      const parsed = toArray(data);
+      // Sort in opposite order (descending / newest first) by asn_id
+      parsed.sort((a, b) => b.asn_id.localeCompare(a.asn_id));
+      setAsnData(parsed);
     } catch {
       showToast({ title: "Error", description: "Failed to load ASNs.", variant: "destructive" });
     } finally {
