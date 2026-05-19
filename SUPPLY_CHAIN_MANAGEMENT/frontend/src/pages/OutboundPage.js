@@ -5,10 +5,9 @@ import { Card } from "../components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
-import { Badge } from "../components/ui/badge";
 import { Label } from "../components/ui/label";
 import {
-  Plus, Search, Eye, Loader2, PackageOpen, Truck, ShoppingBag,
+  Plus, Search, Loader2, PackageOpen, Truck, ShoppingBag,
   RefreshCw, CheckCircle2, AlertTriangle, X, User
 } from "lucide-react";
 import {
@@ -18,7 +17,7 @@ import {
 import { useToast } from "../components/ui/use-toast";
 import {
   outboundPick, listProducts, listStockMovements, 
-  getProductStockByVendor, listProductVendors, listVendors, listSuppliers
+  getProductStockByVendor, listVendors, listSuppliers
 } from "../services/apiService";
 
 /* ── helpers ── */
@@ -30,9 +29,6 @@ const toArray = (res, knownKey = null) => {
     if (Array.isArray(res[key])) return res[key];
   return Object.values(res).find(Array.isArray) || [];
 };
-
-const matchesSearch = (value, query) =>
-  String(value ?? "").toLowerCase().includes(query);
 
 /* ── Dispatch Dialog ── */
 function DispatchDialog({ onClose, onSuccess }) {
@@ -78,7 +74,6 @@ function DispatchDialog({ onClose, onSuccess }) {
           // 3. Get current stock for the selected product across all vendors
           stockData = await getProductStockByVendor(selectedProduct);
         }
-        const byVendorList = stockData?.by_vendor || [];
         
         // Map them together
         const combined = allSuppliersList.map(s => {

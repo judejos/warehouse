@@ -59,7 +59,10 @@ export default function DashboardPage() {
   const [inventoryInsights, setInventoryInsights] = useState({ lowStockItems: [], fastMoving: [] });
   const [outboundStats, setOutboundStats] = useState({ pending: 0, shippedToday: 0, delayed: 0 });
 
-  useEffect(() => { loadDashboardData(); }, []);
+  useEffect(() => { 
+    loadDashboardData(); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadDashboardData = async () => {
     setIsLoading(true);
