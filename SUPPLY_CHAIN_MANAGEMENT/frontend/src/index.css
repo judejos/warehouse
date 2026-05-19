@@ -57,3 +57,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Explicit fallback styles for Sidebar navigation */
+.bg-sidebar {
+  background-color: #ffffff !important;
+}
+.text-sidebar-foreground {
+  color: #1e293b !important;
+}
+.bg-sidebar-accent {
+  background-color: #f3f4f6 !important;
+}
+.text-sidebar-accent-foreground {
+  color: #1e3a8a !important;
+}
+.border-sidebar-border {
+  border-color: #e5e7eb !important;
+}

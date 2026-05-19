@@ -40,6 +40,16 @@ module.exports = {
           DEFAULT: "#FFFFFF",
           foreground: "#1E293B",
         },
+        sidebar: {
+          DEFAULT: "#FFFFFF",
+          foreground: "#1E293B",
+          primary: "#1E3A8A",
+          "primary-foreground": "#FFFFFF",
+          accent: "#F3F4F6",
+          "accent-foreground": "#1E3A8A",
+          border: "#E5E7EB",
+          ring: "#1E3A8A",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
