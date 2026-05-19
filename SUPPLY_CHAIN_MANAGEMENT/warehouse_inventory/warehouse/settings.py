@@ -109,6 +109,7 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://192.168.1.10:3000",
+    "https://warehouse-lq5r.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -118,6 +119,7 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://192.168.1.10:3000",
+    "https://warehouse-lq5r.vercel.app",
 ]
 
 CSRF_COOKIE_SAMESITE = 'Lax'
