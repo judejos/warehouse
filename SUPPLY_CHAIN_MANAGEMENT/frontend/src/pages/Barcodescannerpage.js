@@ -384,7 +384,6 @@ function AddItemsMode({ user }) {
       });
       const qty = Math.round(parseInt(addForm.received_cartons) * (scanResult.conversion_factor || 1));
       setAddedItems(prev => [{ barcode: scanResult.barcode, name: scanResult.product_name, batch: addForm.batch_number, cartons: parseInt(addForm.received_cartons), qty, unit: scanResult.base_unit, ts: new Date() }, ...prev]);
-      setAddedItems(prev => [{ barcode: scanResult.barcode, name: scanResult.product_name, batch: addForm.batch_number, cartons: parseInt(addForm.received_cartons), qty, unit: scanResult.base_unit, ts: new Date() }, ...prev]);
       setScanResult(null); setLastScan({ value: "", type: "" }); setPaused(false); setGlobalError("");
       setTimeout(() => inputRef.current?.focus(), 50);
     } catch (err) { setGlobalError(err.message); }

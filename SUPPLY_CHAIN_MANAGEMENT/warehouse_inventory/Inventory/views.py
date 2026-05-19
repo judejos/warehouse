@@ -1639,9 +1639,9 @@ class ManagerConfirmRejectionView(APIView):
         except UserRole.DoesNotExist:
             role_name = "unknown"
 
-        if role_name not in ("manager", "admin"):
+        if role_name != "manager":
             return Response(
-                {"error": "Only Managers or Admins can perform the final rejection action."},
+                {"error": "Only Managers can perform the final rejection action."},
                 status=status.HTTP_403_FORBIDDEN
             )
 

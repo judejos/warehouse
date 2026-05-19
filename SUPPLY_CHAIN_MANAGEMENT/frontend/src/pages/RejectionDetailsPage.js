@@ -34,7 +34,7 @@ export default function RejectionDetailsPage() {
   const [confirming, setConfirming] = useState(null);
   const [selectedImageInfo, setSelectedImageInfo] = useState(null);
 
-  const isManager = user?.role === "manager" || user?.role === "admin";
+  const isManager = user?.role === "manager";
 
   const loadRejections = useCallback(async () => {
     setLoading(true);
