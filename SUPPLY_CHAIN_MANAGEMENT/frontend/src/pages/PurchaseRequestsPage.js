@@ -331,6 +331,17 @@ export default function PurchaseRequestsPage() {
     loadVendors();
   }, [loadPRs, loadProducts, loadVendors]);
 
+  // ── Auto-refresh every 30 s so table stays current after remote approvals ──
+  useEffect(() => {
+    const id = setInterval(() => {
+      // silent refresh — don't show spinner on auto-poll
+      listPurchaseRequests()
+        .then((data) => setPrs(toArray(data)))
+        .catch(() => {/* silent */});
+    }, 30000);
+    return () => clearInterval(id);
+  }, []);
+
   // ── Detail view ──────────────────────────────────────────────────────────
   const handleViewDetails = async (pr) => {
     setIsLoadingDetail(true);
@@ -399,13 +410,14 @@ export default function PurchaseRequestsPage() {
     if (!rejectPR) return;
     setIsRejecting(true);
     try {
-      // Most backends handle rejection at finance stage — if your backend supports
-      // manager rejection at Pending stage too, call the right endpoint here.
       if (rejectPR.status === "Finance Pending" && isFinance) {
+        // Finance-stage rejection → finance endpoint
         await financeApprovePR(rejectPR.pr_id, { action: "reject" });
-      } else {
-        // For manager-stage rejection, send action:"reject" or call a dedicated endpoint
+      } else if (rejectPR.status === "Pending" && isManager) {
+        // Manager-stage rejection → manager-reject endpoint
         await managerApprovePR(rejectPR.pr_id, { action: "reject" });
+      } else {
+        throw new Error("You do not have permission to reject this PR at its current stage.");
       }
       toast({ title: "PR Rejected", description: `PR #${rejectPR.pr_id} has been rejected.` });
       setRejectPR(null);
@@ -462,8 +474,10 @@ export default function PurchaseRequestsPage() {
   };
 
   // ── Permission helpers ───────────────────────────────────────────────────
-  const canManagerApprove = (pr) => pr.status === "Pending" && isManager && pr.is_auto_generated;
-  const canManagerReject  = (pr) => pr.status === "Pending" && isManager && pr.is_auto_generated;
+  // BUG FIX: managers should be able to approve/reject ANY Pending PR,
+  // not just auto-generated ones.  Auto badge is shown in the table for UX.
+  const canManagerApprove = (pr) => pr.status === "Pending" && isManager;
+  const canManagerReject  = (pr) => pr.status === "Pending" && isManager;
   const canFinanceAct     = (pr) => pr.status === "Finance Pending" && isFinance;
 
   const q = search.toLowerCase();
