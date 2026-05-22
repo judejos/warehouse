@@ -310,11 +310,8 @@ def check_reorder(product, preferred_vendor_id=None):
     total_amount       = reorder_cartons * float(product.carton_price)
 
     # ── Automation Logic ──
-    # Low-value auto-reorders are pre-approved to speed up supply chain.
-    if total_amount > APPROVAL_THRESHOLD:
-        final_status = "Finance Pending"
-    else:
-        final_status = "Approved"
+    # Auto-generated PRs start as Pending and require manager approval
+    final_status = "Pending"
 
     with transaction.atomic():
         pr = PurchaseRequest.objects.create(
@@ -332,20 +329,15 @@ def check_reorder(product, preferred_vendor_id=None):
             created_by         = None,
         )
 
-        po = None
-        if final_status == "Approved":
-            po = create_po_from_pr(pr)
-            send_po_email(po)
-
         # ── Automated Notification ──
-        target_role = "finance_director" if final_status == "Finance Pending" else "inventory_manager"
+        # Notify the manager with a low stock alert redirecting to the PR detail page
         notify_role(
             sender=None,  # System generated
-            recipient_role_name=target_role,
+            recipient_role_name="manager",
             notification_type="inventory",
-            title=f"Low Stock Auto-PR: {product.product_name}",
-            message=f"Stock ({total_stock}) below threshold ({threshold}). PR {pr.pr_id} created ({final_status}).",
-            redirect_url="/purchase-requests"
+            title=f"Low Stock Alert: {product.product_name}",
+            message=f"Stock ({total_stock}) is below threshold ({threshold}). Click to review and approve Auto-PR {pr.pr_id}.",
+            redirect_url=f"/purchase-requests?view_pr={pr.pr_id}"
         )
 
     logger.info(

@@ -810,6 +810,9 @@ class PurchaseRequestListView(APIView):
             "product", "vendor", "recommended_vendor", "created_by"
         ).order_by("-created_at")
 
+        # Exclude auto-generated PRs that are still Pending
+        qs = qs.exclude(is_auto_generated=True, status="Pending")
+
         # Optional filters
         if s := request.query_params.get("status"):
             qs = qs.filter(status=s)
@@ -877,6 +880,13 @@ class ManagerApprovePR(APIView):
                 return Response(edit_s.errors, status=status.HTTP_400_BAD_REQUEST)
 
             edited = edit_s.validated_data
+
+            # Delete low-stock alert notification for this PR
+            from rbac.models import Notification
+            Notification.objects.filter(
+                redirect_url=f"/purchase-requests?view_pr={pr.pr_id}",
+                notification_type="inventory"
+            ).delete()
 
             if "vendor" in edited:
                 new_vendor = edited["vendor"]
@@ -982,6 +992,13 @@ class ManagerRejectPR(APIView):
             if reason:
                 pr.notes = reason
             pr.save()
+
+            # Delete low-stock alert notification for this PR
+            from rbac.models import Notification
+            Notification.objects.filter(
+                redirect_url=f"/purchase-requests?view_pr={pr.pr_id}",
+                notification_type="inventory"
+            ).delete()
 
         return Response(
             {

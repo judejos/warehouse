@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card } from "../components/ui/card";
@@ -26,6 +27,7 @@ import {
 import { useAuth } from "../components/lib/auth-context";
 import {
   listPurchaseRequests,
+  getPurchaseRequest,
   createPurchaseRequest,
   managerApprovePR,
   financeApprovePR,
@@ -270,6 +272,8 @@ function ApproveEditDrawer({ pr, vendors, products, open, onClose, onConfirm, is
 export default function PurchaseRequestsPage() {
   const { user }  = useAuth();
   const { toast } = useToast();
+  const location  = useLocation();
+  const navigate  = useNavigate();
 
   const [search, setSearch]           = useState("");
   const [prs, setPrs]                 = useState([]);
@@ -332,7 +336,7 @@ export default function PurchaseRequestsPage() {
   }, [loadPRs, loadProducts, loadVendors]);
 
   // ── Detail view ──────────────────────────────────────────────────────────
-  const handleViewDetails = async (pr) => {
+  const handleViewDetails = useCallback(async (pr) => {
     setIsLoadingDetail(true);
     setDetailOpen(true);
     setDetailPR(pr);
@@ -347,7 +351,42 @@ export default function PurchaseRequestsPage() {
       if (pRes.status === "fulfilled") setDetailProduct(pRes.value);
     } catch { /* silent */ }
     finally { setIsLoadingDetail(false); }
-  };
+  }, []);
+
+  // Auto-open PR detail/drawer from notification redirect_url (?view_pr=PRXXXX)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const viewPrId = params.get("view_pr");
+    if (viewPrId && products.length > 0 && vendors.length > 0) {
+      const loadSpecificPR = async () => {
+        try {
+          const prDetails = await getPurchaseRequest(viewPrId);
+          if (prDetails) {
+            if (prDetails.status === "Pending" && ["manager", "admin"].includes(user?.role)) {
+              setApproveDrawerPR(prDetails);
+            } else {
+              handleViewDetails(prDetails);
+            }
+          }
+        } catch (err) {
+          toast({
+            title: "Error",
+            description: `Failed to load purchase request ${viewPrId}.`,
+            variant: "destructive",
+          });
+        }
+      };
+
+      loadSpecificPR();
+
+      // Clear only the view_pr query parameter from the URL
+      const updatedParams = new URLSearchParams(location.search);
+      updatedParams.delete("view_pr");
+      const newSearch = updatedParams.toString();
+      const newUrl = location.pathname + (newSearch ? `?${newSearch}` : "");
+      navigate(newUrl, { replace: true });
+    }
+  }, [products, vendors, user, toast, handleViewDetails, location.search, location.pathname, navigate]);
 
   // ── Manager approve flow ─────────────────────────────────────────────────
   // Opens the edit drawer instead of a simple confirm dialog.
