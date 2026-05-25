@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import {
   ArrowLeft,
   Building2,
@@ -19,6 +20,43 @@ import {
 } from "lucide-react";
 import { createVendor, getVendor, updateVendor } from "../services/apiService";
 import { useToast } from "../components/ui/use-toast";
+
+const LOCATION_DATA = {
+  "United States": {
+    "California": ["Los Angeles", "San Francisco", "San Jose", "San Diego", "Sacramento"],
+    "New York": ["New York City", "Buffalo", "Rochester", "Albany", "Syracuse"],
+    "Texas": ["Houston", "Austin", "Dallas", "San Antonio", "Fort Worth"],
+    "Washington": ["Seattle", "Tacoma", "Bellevue", "Spokane", "Olympia"],
+    "Florida": ["Miami", "Orlando", "Tampa", "Jacksonville", "Tallahassee"],
+  },
+  "India": {
+    "Karnataka": ["Bangalore", "Mysore", "Hubli", "Mangalore", "Belgaum"],
+    "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Thane", "Nashik"],
+    "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Trichy", "Salem"],
+    "Delhi": ["New Delhi", "Noida", "Gurugram", "Dwarka", "Saket"],
+    "Telangana": ["Hyderabad", "Warangal", "Nizamabad", "Karimnagar", "Khammam"],
+  },
+  "United Kingdom": {
+    "England": ["London", "Manchester", "Birmingham", "Leeds", "Liverpool"],
+    "Scotland": ["Edinburgh", "Glasgow", "Aberdeen", "Dundee", "Inverness"],
+    "Wales": ["Cardiff", "Swansea", "Newport", "St Davids", "Bangor"],
+  },
+  "Canada": {
+    "Ontario": ["Toronto", "Ottawa", "Mississauga", "Hamilton", "London"],
+    "Quebec": ["Montreal", "Quebec City", "Laval", "Gatineau", "Sherbrooke"],
+    "British Columbia": ["Vancouver", "Victoria", "Surrey", "Burnaby", "Richmond"],
+  },
+  "Australia": {
+    "New South Wales": ["Sydney", "Newcastle", "Wollongong", "Maitland"],
+    "Victoria": ["Melbourne", "Geelong", "Ballarat", "Bendigo"],
+    "Queensland": ["Brisbane", "Gold Coast", "Sunshine Coast", "Townsville"],
+  },
+  "Germany": {
+    "Bavaria": ["Munich", "Nuremberg", "Augsburg", "Regensburg"],
+    "Berlin": ["Berlin"],
+    "Hamburg": ["Hamburg"],
+  }
+};
 
 const EMPTY_FORM = {
   vendor_name: "",
@@ -66,12 +104,22 @@ export default function VendorFormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [warehouseError, setWarehouseError] = useState(false);
 
+  const [isCustomCountry, setIsCustomCountry] = useState(false);
+  const [isCustomState, setIsCustomState] = useState(false);
+  const [isCustomCity, setIsCustomCity] = useState(false);
+
   /* ── Load existing vendor when editing ── */
   useEffect(() => {
     if (!isEditMode) return;
     (async () => {
       try {
         const vendor = await getVendor(id);
+        const country = vendor.country ?? "";
+        const state   = vendor.state   ?? "";
+        const city    = vendor.city    ?? "";
+        setIsCustomCountry(country && !LOCATION_DATA[country]);
+        setIsCustomState(state && !(LOCATION_DATA[country] && LOCATION_DATA[country][state]));
+        setIsCustomCity(city && !(LOCATION_DATA[country]?.[state]?.includes(city)));
         setFormData({
           vendor_name:    vendor.vendor_name    ?? "",
           contact_person: vendor.contact_person ?? "",
@@ -80,9 +128,9 @@ export default function VendorFormPage() {
           gstin:          vendor.gstin          ?? "",
           lead_time:      vendor.lead_time      ?? "",
           address:        vendor.address        ?? "",
-          city:           vendor.city           ?? "",
-          state:          vendor.state          ?? "",
-          country:        vendor.country        ?? "",
+          city,
+          state,
+          country,
         });
       } catch {
         toast({ title: "Error", description: "Failed to load vendor details.", variant: "destructive" });
@@ -95,6 +143,42 @@ export default function VendorFormPage() {
 
   const setField = (field) => (e) =>
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
+
+  const handleCountryChange = (val) => {
+    if (val === "other") {
+      setIsCustomCountry(true);
+      setFormData((prev) => ({ ...prev, country: "", state: "", city: "" }));
+      setIsCustomState(true);
+      setIsCustomCity(true);
+    } else {
+      setIsCustomCountry(false);
+      setFormData((prev) => ({ ...prev, country: val, state: "", city: "" }));
+      setIsCustomState(false);
+      setIsCustomCity(false);
+    }
+  };
+
+  const handleStateChange = (val) => {
+    if (val === "other") {
+      setIsCustomState(true);
+      setFormData((prev) => ({ ...prev, state: "", city: "" }));
+      setIsCustomCity(true);
+    } else {
+      setIsCustomState(false);
+      setFormData((prev) => ({ ...prev, state: val, city: "" }));
+      setIsCustomCity(false);
+    }
+  };
+
+  const handleCityChange = (val) => {
+    if (val === "other") {
+      setIsCustomCity(true);
+      setFormData((prev) => ({ ...prev, city: "" }));
+    } else {
+      setIsCustomCity(false);
+      setFormData((prev) => ({ ...prev, city: val }));
+    }
+  };
 
   const isFormValid =
     formData.vendor_name.trim() &&
@@ -337,14 +421,114 @@ export default function VendorFormPage() {
                   />
                 </Field>
               </div>
-              <Field label="City">
-                <Input value={formData.city} onChange={setField("city")} placeholder="City name" className="h-9" />
-              </Field>
-              <Field label="State">
-                <Input value={formData.state} onChange={setField("state")} placeholder="State or province" className="h-9" />
-              </Field>
+              {/* ── Country ── */}
               <Field label="Country">
-                <Input value={formData.country} onChange={setField("country")} placeholder="Country name" className="h-9" />
+                {!isCustomCountry ? (
+                  <Select value={formData.country} onValueChange={handleCountryChange}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(LOCATION_DATA).map((c) => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                      <SelectItem value="other">Other (type manually)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={formData.country}
+                      onChange={setField("country")}
+                      placeholder="Enter country"
+                      className="h-9 flex-1"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setIsCustomCountry(false); setFormData(p => ({ ...p, country: "", state: "", city: "" })); setIsCustomState(false); setIsCustomCity(false); }}
+                      className="text-xs text-muted-foreground underline whitespace-nowrap hover:text-foreground"
+                    >
+                      ← List
+                    </button>
+                  </div>
+                )}
+              </Field>
+
+              {/* ── State ── */}
+              <Field label="State">
+                {!isCustomState ? (
+                  <Select
+                    value={formData.state}
+                    onValueChange={handleStateChange}
+                    disabled={!formData.country || isCustomCountry}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder={formData.country ? "Select state" : "Select country first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(LOCATION_DATA[formData.country] ? Object.keys(LOCATION_DATA[formData.country]) : []).map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                      <SelectItem value="other">Other (type manually)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={formData.state}
+                      onChange={setField("state")}
+                      placeholder="Enter state / province"
+                      className="h-9 flex-1"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setIsCustomState(false); setFormData(p => ({ ...p, state: "", city: "" })); setIsCustomCity(false); }}
+                      className="text-xs text-muted-foreground underline whitespace-nowrap hover:text-foreground"
+                    >
+                      ← List
+                    </button>
+                  </div>
+                )}
+              </Field>
+
+              {/* ── City ── */}
+              <Field label="City">
+                {!isCustomCity ? (
+                  <Select
+                    value={formData.city}
+                    onValueChange={handleCityChange}
+                    disabled={!formData.state || isCustomState}
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder={formData.state ? "Select city" : "Select state first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(LOCATION_DATA[formData.country]?.[formData.state] ?? []).map((city) => (
+                        <SelectItem key={city} value={city}>{city}</SelectItem>
+                      ))}
+                      <SelectItem value="other">Other (type manually)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={formData.city}
+                      onChange={setField("city")}
+                      placeholder="Enter city"
+                      className="h-9 flex-1"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setIsCustomCity(false); setFormData(p => ({ ...p, city: "" })); }}
+                      className="text-xs text-muted-foreground underline whitespace-nowrap hover:text-foreground"
+                    >
+                      ← List
+                    </button>
+                  </div>
+                )}
               </Field>
             </div>
           </Section>
