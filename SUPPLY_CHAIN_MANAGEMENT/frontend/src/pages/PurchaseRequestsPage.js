@@ -94,7 +94,7 @@ function ApproveEditDrawer({ pr, vendors, products, open, onClose, onConfirm, is
     ? parseInt(cartons) * (product.carton_price ?? product.unit_price ?? 0)
     : pr.total_amount ?? 0;
 
-  const needsFinance = estimatedTotal > 5000;
+  const needsFinance = true;
   const vendorChanged = String(selectedVendor) !== String(pr.vendor || pr.vendor_id || "");
   const cartonsChanged = parseInt(cartons) !== pr.requested_cartons;
   const hasChanges = vendorChanged || cartonsChanged;
@@ -239,7 +239,7 @@ function ApproveEditDrawer({ pr, vendors, products, open, onClose, onConfirm, is
                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-100 text-amber-700 text-xs font-semibold">
                     <AlertTriangle className="w-3 h-3" /> Finance approval required
                   </span>
-                  <p className="text-[10px] text-amber-600 mt-1">Amount exceeds ₹5,000</p>
+                  <p className="text-[10px] text-amber-600 mt-1">All purchase requests require finance approval</p>
                 </div>
               )}
             </div>
@@ -417,12 +417,12 @@ export default function PurchaseRequestsPage() {
 
       const product = products.find(p => String(p.product_id) === String(pr.product || pr.product_id));
       const total = requested_cartons * (product?.carton_price ?? product?.unit_price ?? 0);
-      const needsFinance = total > 5000;
+      const needsFinance = true;
 
       toast({
         title: "PR Approved",
         description: needsFinance && !isFinance
-          ? "Sent to Finance Director for final approval (amount > ₹5,000)."
+          ? "Sent to Finance Director for final approval."
           : "Purchase Order created and emailed to vendor.",
       });
 
@@ -972,11 +972,11 @@ export default function PurchaseRequestsPage() {
                       {detailPR?.status === "Rejected"          && "Request Rejected"}
                     </p>
                   </div>
-                  {detailPR?.total_amount > 5000 && !["Approved", "Rejected"].includes(detailPR?.status) && (
+                  {!["Approved", "Rejected"].includes(detailPR?.status) && (
                     <div className="flex items-center gap-3 pl-4 border-l-2 border-yellow-400">
                       <div className="w-2 h-2 rounded-full bg-yellow-500" />
                       <p className="text-sm text-yellow-700">
-                        High-value request (₹{(detailPR.total_amount).toLocaleString()}) requires Finance Director approval
+                        Requires Finance Director approval
                       </p>
                     </div>
                   )}
@@ -1059,9 +1059,7 @@ export default function PurchaseRequestsPage() {
                   <p className="text-xs text-gray-500">
                     Estimated total:{" "}
                     <span className="font-medium text-gray-900">₹{total.toLocaleString()}</span>
-                    {total > 5000 && (
-                      <span className="ml-2 text-amber-600">(Requires Finance approval)</span>
-                    )}
+                    <span className="ml-2 text-amber-600">(Requires Finance approval)</span>
                   </p>
                 );
               })()}

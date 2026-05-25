@@ -757,10 +757,7 @@ class ManualCreatePRView(APIView):
 
         # Manual PRs skip the "Manager Review" step because the creator 
         # (Supervisor/Manager) already selected the vendor and quantity.
-        if total_amount > APPROVAL_THRESHOLD:
-            final_status = "Finance Pending"
-        else:
-            final_status = "Approved"
+        final_status = "Finance Pending"
 
         pr = PurchaseRequest.objects.create(
             product            = product,
@@ -774,9 +771,6 @@ class ManualCreatePRView(APIView):
         )
 
         po = None
-        if final_status == "Approved":
-            po = create_po_from_pr(pr)
-            send_po_email(po)
 
         # ── Automated Notification ──
         notify_role(
@@ -791,8 +785,8 @@ class ManualCreatePRView(APIView):
             sender=request.user,
             recipient_role_name="finance_director",
             notification_type="approval",
-            title=f"PR Awaiting Review: {pr.pr_id}",
-            message=f"Amount: ₹{pr.total_amount}. Manager is reviewing.",
+            title=f"PR Awaiting Finance Review: {pr.pr_id}",
+            message=f"Amount: ₹{pr.total_amount}. Awaiting your approval.",
             redirect_url="/purchase-requests"
         )
 
@@ -907,62 +901,28 @@ class ManagerApprovePR(APIView):
 
             pr.total_amount = pr.requested_cartons * float(pr.product.carton_price)
 
-            if pr.total_amount > APPROVAL_THRESHOLD:
-                pr.status = "Finance Pending"
-                pr.save()
-
-                # ── Automated Notification ──
-                notify_role(
-                    sender=request.user,
-                    recipient_role_name="finance_director",
-                    notification_type="approval",
-                    title=f"Approval Required: {pr.pr_id}",
-                    message=f"PR exceeds ₹{APPROVAL_THRESHOLD}. Amount: ₹{pr.total_amount}",
-                    redirect_url="/purchase-requests"
-                )
-
-                return Response(
-                    {
-                        "message":        "PR routed to Finance Director for approval.",
-                        "pr_id":          pr.pr_id,
-                        "status":         pr.status,
-                        "total_amount":   str(pr.total_amount),
-                        "vendor_warning": pr.vendor_warning,
-                    }
-                )
-
-            pr.status = "Approved"
+            pr.status = "Finance Pending"
             pr.save()
-            po = _create_po_from_pr(pr)
 
             # ── Automated Notification ──
             notify_role(
                 sender=request.user,
-                recipient_role_name="inventory_manager",
-                notification_type="task",
-                title=f"PO Created: {po.po_id}",
-                message=f"New Purchase Order for {po.pr.product.product_name}. Prepare for ASN.",
-                redirect_url="/purchase-orders"
-            )
-            notify_role(
-                sender=request.user,
-                recipient_role_name="supervisor",
-                notification_type="task",
-                title=f"Create ASN for PO: {po.po_id}",
-                message=f"PO {po.po_id} has been approved. Please coordinate with the vendor to create the ASN.",
-                redirect_url="/asn"
+                recipient_role_name="finance_director",
+                notification_type="approval",
+                title=f"Approval Required: {pr.pr_id}",
+                message=f"Finance Director approval required. Amount: ₹{pr.total_amount}",
+                redirect_url="/purchase-requests"
             )
 
-        send_po_email(po)
-        return Response(
-            {
-                "message":        "PR approved and PO created.",
-                "pr_id":          pr.pr_id,
-                "po_id":          po.po_id,
-                "status":         pr.status,
-                "vendor_warning": pr.vendor_warning,
-            }
-        )
+            return Response(
+                {
+                    "message":        "PR routed to Finance Director for approval.",
+                    "pr_id":          pr.pr_id,
+                    "status":         pr.status,
+                    "total_amount":   str(pr.total_amount),
+                    "vendor_warning": pr.vendor_warning,
+                }
+            )
 
 
 class ManagerRejectPR(APIView):
