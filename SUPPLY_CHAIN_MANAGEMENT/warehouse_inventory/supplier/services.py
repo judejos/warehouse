@@ -1,6 +1,9 @@
+import logging
 from .models import Supplier
 from django.core.mail import send_mail
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 class SupplierService:
 
@@ -20,7 +23,10 @@ class SupplierService:
         )
 
         if supplier.email:
-            SupplierService.send_supplier_email(supplier)
+            try:
+                SupplierService.send_supplier_email(supplier)
+            except Exception as e:
+                logger.error(f"Failed to send welcome email to supplier {supplier.supplier_id}: {e}", exc_info=True)
 
         return supplier
 
@@ -48,7 +54,7 @@ Warehouse Management Team
             message,
             settings.EMAIL_HOST_USER,
             [supplier.email],
-            fail_silently=False
+            fail_silently=True
         )
 
 

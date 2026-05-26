@@ -44,7 +44,7 @@ class Supplier(models.Model):
 
     class Meta:
         db_table = "supplier"
-        ordering = ["supplier_name"]
+        ordering = ["supplier_id"]
 
     def save(self, *args, **kwargs):
 

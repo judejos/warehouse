@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from .models import Supplier
 from vendors.models import Vendor
 
-@receiver(post_save, sender=Supplier)
+# @receiver(post_save, sender=Supplier)
 def mirror_supplier_to_vendor(sender, instance, created, **kwargs):
     # Try to find a vendor by email or vendor_name
     vendor = None

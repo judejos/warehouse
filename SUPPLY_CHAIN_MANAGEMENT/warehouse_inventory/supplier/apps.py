@@ -6,4 +6,6 @@ class SupplierConfig(AppConfig):
     name = 'supplier'
 
     def ready(self):
-        import supplier.signals
+        # Disable auto-mirroring signals
+        # import supplier.signals
+        pass
