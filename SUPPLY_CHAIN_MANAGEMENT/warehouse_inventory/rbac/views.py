@@ -576,12 +576,13 @@ class DeleteUserView(APIView):
 
 # Role permission matrix: who can send to whom
 ROLE_SEND_PERMISSIONS = {
-    "admin":            ["admin", "manager", "supervisor", "inventory_manager", "quality_assistant", "finance_director"],
+    "admin":            ["admin", "manager", "supervisor", "inventory_manager", "quality_assistant", "finance_director", "sales_manager"],
     "manager":          ["supervisor", "inventory_manager", "finance_director", "quality_assistant"],
     "supervisor":       ["manager"],
     "inventory_manager": ["finance_director", "manager"],
     "quality_assistant": ["manager", "supervisor"],
     "finance_director": ["manager", "admin"],
+    "sales_manager":    ["admin", "inventory_manager", "supervisor", "finance_director"],
 }
 
 

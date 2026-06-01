@@ -46,6 +46,7 @@ const ROLE_OPTIONS = [
   { value: "finance_director",  label: "Finance Director" },
   { value: "manager",           label: "Manager" },
   { value: "supervisor",        label: "Supervisor" },
+  { value: "sales_manager",     label: "Sales Manager" },
 ];
 
 const EMPTY_FORM = { username: "", email: "", f_name: "", l_name: "", role: "" };

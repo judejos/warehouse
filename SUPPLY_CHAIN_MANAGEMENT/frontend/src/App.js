@@ -27,6 +27,12 @@ import VendorsPage        from "./pages/VendorsPage";
 import CreateVendorPage   from "./pages/CreateVendorPage";
 import UploadAgreementPage from "./pages/UploadAgreementPage";
 
+// Sales Manager Workflow Pages
+import SalesManagerPage from "./pages/SalesManagerPage";
+import InventoryStockCheckPage from "./pages/InventoryStockCheckPage";
+import SupervisorOrderApprovalPage from "./pages/SupervisorOrderApprovalPage";
+import SalesFinancePage from "./pages/SalesFinancePage";
+
 // Auth Pages
 import LoginPage             from "./pages/auth/LoginPage";
 import OTPPage               from "./pages/auth/OTPPage";
@@ -115,6 +121,12 @@ const App = () => (
 
               {/* ── Finance ── */}
               <Route path="/finance" element={<RoleGuard allowedRoles={["admin","finance_director"]}><FinancePage /></RoleGuard>} />
+
+              {/* ── Sales Manager Workflow ── */}
+              <Route path="/sales"           element={<RoleGuard allowedRoles={["admin","sales_manager"]}><SalesManagerPage /></RoleGuard>} />
+              <Route path="/stock-check"     element={<RoleGuard allowedRoles={["admin","inventory_manager"]}><InventoryStockCheckPage /></RoleGuard>} />
+              <Route path="/order-approval"  element={<RoleGuard allowedRoles={["admin","supervisor"]}><SupervisorOrderApprovalPage /></RoleGuard>} />
+              <Route path="/sales-finance"   element={<RoleGuard allowedRoles={["admin","finance_director"]}><SalesFinancePage /></RoleGuard>} />
 
               {/* ── Admin only ── */}
               <Route path="/users"    element={<RoleGuard allowedRoles={["admin"]}><UsersPage /></RoleGuard>} />

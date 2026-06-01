@@ -491,3 +491,33 @@ export const listRejections = () =>
 
 export const confirmRejection = (itemId) =>
   apiRequest(`/inventory/rejections/${itemId}/confirm/`, 'POST');
+
+/* ================= SALES ================= */
+
+// CPR (Customer Purchase Requests)
+export const listCPRs = (all = false) => 
+  apiRequest(`/sales/cpr/${all ? '?all=1' : ''}`, 'GET');
+export const createCPR = (data) => 
+  apiRequest('/sales/cpr/', 'POST', data);
+export const inventoryActionCPR = (cprId, data) => 
+  apiRequest(`/sales/cpr/${cprId}/inventory-action/`, 'PATCH', data);
+
+// SO (Sales Orders)
+export const listSalesOrders = () => 
+  apiRequest('/sales/so/', 'GET');
+export const createSalesOrder = (data) => 
+  apiRequest('/sales/so/', 'POST', data);
+export const supervisorActionSO = (soId, data) => 
+  apiRequest(`/sales/so/${soId}/supervisor-action/`, 'PATCH', data);
+export const recordSOPayment = (soId, data) => 
+  apiRequest(`/sales/so/${soId}/payment/`, 'POST', data);
+export const financeConfirmSO = (soId, data) => 
+  apiRequest(`/sales/so/${soId}/finance-confirm/`, 'PATCH', data);
+export const pickPackSO = (soId) => 
+  apiRequest(`/sales/so/${soId}/pick-pack/`, 'POST');
+export const dispatchSO = (soId) => 
+  apiRequest(`/sales/so/${soId}/dispatch/`, 'POST');
+
+// Payments
+export const listSOPayments = (all = false) => 
+  apiRequest(`/sales/payments/${all ? '?all=1' : ''}`, 'GET');

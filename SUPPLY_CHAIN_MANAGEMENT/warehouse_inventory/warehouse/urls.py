@@ -26,7 +26,10 @@ urlpatterns = [
     # Product APIs
     path('api/products/', include('products.urls')),
 
-    path('api/inventory/',include('Inventory.urls')),
+    path('api/inventory/', include('Inventory.urls')),
+
+    # Sales APIs
+    path('api/sales/', include('sales.urls')),
 ]
 
 

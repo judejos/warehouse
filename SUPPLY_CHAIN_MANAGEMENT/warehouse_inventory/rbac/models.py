@@ -14,6 +14,7 @@ class Role(models.Model):
         ("finance_director", "Finance Director"),
         ("manager", "Manager"),
         ("supervisor", "Supervisor"),
+        ("sales_manager", "Sales Manager"),
     )
 
     name = models.CharField(max_length=50, choices=ROLE_CHOICES, unique=True)

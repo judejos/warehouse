@@ -14,6 +14,7 @@ import {
   CheckSquare,
   ScanLine,
   ShieldAlert,
+  ShoppingCart,
 } from "lucide-react";
 
 const allModules = {
@@ -26,13 +27,19 @@ const allModules = {
   qualityCheck:     { title: "QC",                url: "/quality-check",     icon: CheckSquare },
   users:            { title: "Users",             url: "/users",             icon: Users },
   vendors:          { title: "Vendor",            url: "/vendors",           icon: Building2 },
-  suppliers:        { title: "Supplier",          url: "/suppliers",         icon: UserCheck },
+  suppliers:        { title: "Customer",          url: "/suppliers",         icon: UserCheck },
   warehouses:       { title: "Warehouse",         url: "/warehouses",        icon: Warehouse },
   outbound:         { title: "Outbound Orders",   url: "/outbound",          icon: PackageOpen },
   finance:          { title: "Finance",           url: "/finance",           icon: DollarSign },
   settings:         { title: "Settings",          url: "/settings",          icon: Settings },
   scanner:          { title: "Barcode Scanner",   url: "/barcode-scanner",   icon: ScanLine },
   rejections:       { title: "QC Rejections",     url: "/rejections",        icon: ShieldAlert },
+  
+  // Sales Flow Modules
+  salesManager:     { title: "Sales Dashboard",   url: "/sales",             icon: ShoppingCart },
+  stockCheck:       { title: "Stock Check",       url: "/stock-check",       icon: CheckSquare },
+  orderApproval:    { title: "Order Approval",    url: "/order-approval",    icon: ClipboardCheck },
+  salesFinance:     { title: "Sales Finance",     url: "/sales-finance",     icon: DollarSign },
 };
 
 const roleModules = {
@@ -53,7 +60,11 @@ const roleModules = {
     "warehouses",
     "finance",
     "rejections",
-    "settings"
+    "settings",
+    "salesManager",
+    "stockCheck",
+    "orderApproval",
+    "salesFinance"
   ],
   // Operational managers
   manager: [
@@ -61,7 +72,7 @@ const roleModules = {
   ],
   // Warehouse supervisor
   supervisor: [
-    "dashboard", "asn", "grn", "rejections", "inventory"
+    "dashboard", "asn", "grn", "rejections", "inventory", "orderApproval"
   ],
   // QC roles
   quality_checker: [
@@ -72,11 +83,15 @@ const roleModules = {
   ],
   // Finance
   finance_director: [
-    "dashboard", "purchaseRequests", "finance"
+    "dashboard", "purchaseRequests", "finance", "salesFinance"
   ],
   // Inventory manager
   inventory_manager: [
-    "dashboard", "vendors", "suppliers", "scanner", "inventory", "products", "warehouses"
+    "dashboard", "vendors", "suppliers", "scanner", "inventory", "products", "warehouses", "stockCheck"
+  ],
+  // Sales manager
+  sales_manager: [
+    "dashboard", "salesManager"
   ],
 };
 
@@ -100,6 +115,7 @@ export const ROLE_DISPLAY = {
   quality_assistant: "Quality Assistant",
   finance_director:  "Finance Director",
   inventory_manager: "Inventory Manager",
+  sales_manager:     "Sales Manager",
 };
 
 export const canManageVendors = (role) =>

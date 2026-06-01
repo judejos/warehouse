@@ -29,6 +29,7 @@ INSTALLED_APPS = [
     'products',
     'Inventory',
     'rbac.apps.RbacConfig',
+    'sales.apps.SalesConfig',
 ]
 
 
