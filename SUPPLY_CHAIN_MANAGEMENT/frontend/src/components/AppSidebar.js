@@ -49,7 +49,10 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const active = location.pathname === item.url;
+                // Use startsWith for nested routes, exact for top-level
+                const active = item.url.includes("/", 1)
+                  ? location.pathname.startsWith(item.url)
+                  : location.pathname === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild isActive={active}>

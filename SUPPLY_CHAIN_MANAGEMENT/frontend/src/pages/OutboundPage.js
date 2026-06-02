@@ -8,7 +8,7 @@ import {
 import { Label } from "../components/ui/label";
 import {
   Plus, Search, Loader2, PackageOpen, Truck, ShoppingBag,
-  RefreshCw, CheckCircle2, AlertTriangle, X, User
+  RefreshCw, CheckCircle2, AlertTriangle, X, User,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -16,8 +16,8 @@ import {
 } from "../components/ui/dialog";
 import { useToast } from "../components/ui/use-toast";
 import {
-  outboundPick, listProducts, listStockMovements, 
-  getProductStockByVendor, listVendors, listSuppliers
+  removeStockByProduct, listProducts, listStockMovements,
+  listSalesOrders, pickPackSO, dispatchSO, listCustomers,
 } from "../services/apiService";
 
 /* ── helpers ── */
@@ -30,383 +30,129 @@ const toArray = (res, knownKey = null) => {
   return Object.values(res).find(Array.isArray) || [];
 };
 
-/* ── Dispatch Dialog ── */
-function DispatchDialog({ onClose, onSuccess }) {
+/* ── STATUS helpers for Sales Orders ── */
+const SO_STATUS_COLOR = {
+  "Finance Confirmed": "bg-emerald-100 text-emerald-800 border-emerald-300",
+  "Pick & Pack":       "bg-blue-100 text-blue-800 border-blue-300",
+  "Dispatched":        "bg-teal-100 text-teal-800 border-teal-300",
+};
+const SOPill = ({ status }) => (
+  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${SO_STATUS_COLOR[status] || "bg-gray-100 text-gray-700 border-gray-300"}`}>
+    {status}
+  </span>
+);
+
+
+
+/* ── Confirm SO Dispatch Dialog ── */
+function ConfirmSODispatchDialog({ so, onClose, onSuccess }) {
   const { toast } = useToast();
-  const [products, setProducts]     = useState([]);
-  const [loadingProd, setLoadingProd] = useState(true);
-  const [selectedProduct, setSelectedProduct] = useState("");
-  const [selectedSupplierId, setSelectedSupplierId] = useState("");
-  const [vendorStocks, setVendorStocks] = useState([]);
-  const [quantity, setQuantity]     = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult]         = useState(null);   // success result
-  const [search, setSearch]         = useState("");
 
-  useEffect(() => {
-    listProducts()
-      .then(r => setProducts(toArray(r)))
-      .catch(() => toast({ title: "Error", description: "Failed to load products.", variant: "destructive" }))
-      .finally(() => setLoadingProd(false));
-  }, [toast]);
-
-  const filteredProducts = products.filter(p =>
-    !search ||
-    p.product_name?.toLowerCase().includes(search.toLowerCase()) ||
-    p.product_id?.toLowerCase().includes(search.toLowerCase()) ||
-    p.barcode?.toLowerCase().includes(search.toLowerCase())
-  );
-
-  // Fetch all suppliers when component mounts or product changes
-  useEffect(() => {
-    const fetchSupplierData = async () => {
-      try {
-        // 1. Get ALL registered suppliers in the system
-        const suppliersData = await listSuppliers();
-        const allSuppliersList = suppliersData?.results || suppliersData || [];
-        
-        // 2. Also get vendors to ensure we have the mapping for the backend
-        const vendorsData = await listVendors();
-        const allVendorsList = vendorsData?.results || vendorsData || [];
-
-        let stockData = null;
-        if (selectedProduct) {
-          // 3. Get current stock for the selected product across all vendors
-          stockData = await getProductStockByVendor(selectedProduct);
-        }
-        
-        // Map them together
-        const combined = allSuppliersList.map(s => {
-          // Find the corresponding vendor by name, email, or numerical ID sequence to get the ID the backend needs
-          const matchingVendor = allVendorsList.find(v => 
-            v.vendor_name?.trim().toLowerCase() === s.supplier_name?.trim().toLowerCase() ||
-            (v.email && s.email && v.email.trim().toLowerCase() === s.email.trim().toLowerCase()) ||
-            parseInt((v.vendor_id || "").replace(/\D/g, ""), 10) === parseInt((s.supplier_id || "").replace(/\D/g, ""), 10)
-          );
-          
-          return {
-            supplier_id: s.supplier_id,
-            supplier_name: s.supplier_name,
-            vendor_id: matchingVendor?.vendor_id || "", // Internal ID for backend
-            total_quantity: stockData ? stockData.total_stock : 0
-          };
-        });
-
-        setVendorStocks(combined);
-        if (!selectedProduct) setSelectedSupplierId("");
-      } catch (err) {
-        console.error("Failed to fetch suppliers:", err);
-      }
-    };
-    fetchSupplierData();
-  }, [selectedProduct]);
-
-  const selectedProductObj = products.find(p => p.product_id === selectedProduct);
-  const selectedSupplierObj = vendorStocks.find(vs => vs.supplier_id === selectedSupplierId);
-  const availableStock = selectedSupplierObj ? selectedSupplierObj.total_quantity : 0;
-  const enteredQty = parseInt(quantity) || 0;
-
-  const isDispatchBlocked = !selectedProduct || !selectedSupplierId || enteredQty <= 0 || enteredQty > availableStock || availableStock === 0;
-
-  const handleDispatch = async () => {
-    if (isDispatchBlocked) {
-      toast({ title: "Blocked", description: "Dispatch validation failed. Please check quantity and available stock.", variant: "destructive" });
-      return;
-    }
+  const handleConfirm = async () => {
     setSubmitting(true);
     try {
-      const res = await outboundPick(selectedProduct, { 
-        quantity: enteredQty,
-        vendor_id: null // Dispatch from total warehouse pool as requested
+      await dispatchSO(so.so_id);
+      toast({
+        title: "Dispatch Successful 🚚",
+        description: `SO ${so.so_id} has been dispatched. Stock was automatically deducted.`,
       });
-      setResult(res);
       onSuccess();
-      
-      const isLow = res.reorder_triggered || res.low_stock_warning;
-      
-      let title = "Dispatch Successful";
-      if (res.reorder_triggered) title = "Stock Alert";
-      else if (res.low_stock_warning) title = "Low Stock Alert";
-
-      let description = res.reorder_triggered 
-        ? res.message 
-        : `${enteredQty} units of ${selectedProductObj?.product_name} dispatched.`;
-      
-      if (res.low_stock_warning && !res.reorder_triggered) {
-        description += ` Remaining stock (${res.remaining_stock}) is below reorder point.`;
-      }
-
-      toast({ 
-        title,
-        description,
-        variant: isLow ? "default" : "default" 
-      });
+      onClose();
     } catch (err) {
-      toast({ title: "Dispatch Failed", description: err.message, variant: "destructive" });
+      toast({
+        title: "Dispatch Failed",
+        description: err.message || "Unknown error occurred.",
+        variant: "destructive",
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={true} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Truck className="w-4 h-4 text-[#1E3A8A]" />
-            Dispatch / Pick Stock
+            <Truck className="w-5 h-5 text-teal-600" />
+            Confirm Sales Order Dispatch
           </DialogTitle>
           <DialogDescription>
-            Select a product and enter the quantity to dispatch from warehouse bins.
+            Are you sure you want to dispatch <strong>{so.quantity} units</strong> for <strong>SO {so.so_id}</strong>? 
+            This will automatically deduct physical stock from the warehouse using FIFO logic.
           </DialogDescription>
         </DialogHeader>
-
-        {result ? (
-          <div className="space-y-4 py-2">
-            <div className="flex items-center gap-2 text-emerald-700 font-semibold">
-              <CheckCircle2 className="w-5 h-5" />
-              Dispatch Completed
-            </div>
-            <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm">
-              <p className="text-xs text-emerald-600 font-medium mb-2">Picked from bins:</p>
-              {(result.picked_bins || []).map((b, i) => (
-                <div key={i} className="flex items-center justify-between py-1 border-b border-emerald-100 last:border-0">
-                  <span className="font-mono text-xs text-gray-700">{b.bin_id}</span>
-                  <span className="text-xs text-gray-600">{b.vendor_name} · Batch: {b.batch_number}</span>
-                  <span className="text-sm font-bold text-emerald-700">{b.picked_quantity} {b.base_unit}</span>
-                </div>
-              ))}
-              <p className="text-xs text-emerald-700 font-semibold mt-2 pt-1 border-t border-emerald-200">
-                Total dispatched: {result.requested_quantity} units
-              </p>
-            </div>
-            <DialogFooter>
-              <Button onClick={onClose} className="bg-[#1E3A8A] hover:bg-[#162d6e]">Done</Button>
-            </DialogFooter>
-          </div>
-        ) : (
-          <div className="space-y-4 py-2">
-            <div className="grid gap-2">
-              <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wider">Product Selection *</Label>
-              
-              {!selectedProduct ? (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by name, ID or barcode…"
-                      value={search}
-                      onChange={e => setSearch(e.target.value)}
-                      className="pl-9 h-10 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
-                    />
-                    {search && (
-                      <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                        <X className="w-4 h-4 text-muted-foreground hover:text-gray-900" />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="border rounded-xl overflow-hidden shadow-sm">
-                    <div className="max-h-[180px] overflow-y-auto bg-slate-50/50">
-                      {loadingProd ? (
-                        <div className="flex flex-col items-center justify-center py-8 gap-2">
-                          <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
-                          <p className="text-[10px] text-slate-500 font-medium">Loading products...</p>
-                        </div>
-                      ) : filteredProducts.length === 0 ? (
-                        <div className="py-8 text-center">
-                          <PackageOpen className="w-6 h-6 mx-auto text-slate-300 mb-2" />
-                          <p className="text-xs text-slate-500 italic">No matching products found.</p>
-                        </div>
-                      ) : (
-                        <div className="divide-y divide-slate-100">
-                          {filteredProducts.map(p => (
-                            <button
-                              key={p.product_id}
-                              onClick={() => setSelectedProduct(p.product_id)}
-                              className="w-full px-4 py-3 text-left hover:bg-white hover:shadow-inner transition-all flex items-center justify-between group"
-                            >
-                              <div>
-                                <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
-                                  {p.product_name}
-                                </p>
-                                <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                                  ID: {p.product_id} {p.barcode ? `· BC: ${p.barcode}` : ""}
-                                </p>
-                              </div>
-                              <Plus className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 group-hover:scale-110 transition-all" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* ── Selected State ── */
-                <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-between animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm text-indigo-600">
-                      <ShoppingBag className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-900">{selectedProductObj?.product_name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[9px] font-bold uppercase rounded">
-                          {selectedProductObj?.product_id}
-                        </span>
-                        <span className="text-[10px] text-slate-500">
-                          Unit: <strong>{selectedProductObj?.base_unit || "Units"}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => { setSelectedProduct(""); setSearch(""); }}
-                    className="p-2 hover:bg-white rounded-lg transition-all text-slate-400 hover:text-rose-500 hover:shadow-sm"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-
-              {/* ── Vendor Selection ── */}
-              {selectedProduct && (
-                <div className="space-y-2 mt-4 animate-in slide-in-from-top-2 duration-300">
-                  <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">SELECT SUPPLIER (REQUIRED) *</label>
-                  <div className="grid grid-cols-1 gap-2">
-                    {vendorStocks.length > 0 ? (
-                      vendorStocks.map((vs) => (
-                        <div
-                          key={vs.supplier_id}
-                          onClick={() => setSelectedSupplierId(vs.supplier_id === selectedSupplierId ? "" : vs.supplier_id)}
-                          className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-all ${
-                            selectedSupplierId === vs.supplier_id
-                              ? "border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600 shadow-sm"
-                              : "border-slate-200 hover:border-slate-300 bg-white"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                              selectedSupplierId === vs.supplier_id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"
-                            }`}>
-                              <User className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-bold text-xs text-slate-800">{vs.supplier_name}</p>
-                                {vs.total_quantity > 20 ? (
-                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">🟢 In Stock</span>
-                                ) : vs.total_quantity > 0 ? (
-                                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">🟠 Low Stock</span>
-                                ) : (
-                                  <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">🔴 Out of Stock</span>
-                                )}
-                              </div>
-                              <p className="text-[10px] text-slate-500 mt-0.5">
-                                ID: <span className="font-mono font-bold text-indigo-600">{vs.supplier_id}</span> · Stock: <span className="text-indigo-600 font-bold">{vs.total_quantity}</span> {selectedProductObj?.base_unit}
-                              </p>
-                            </div>
-                          </div>
-                          {selectedSupplierId === vs.supplier_id && (
-                            <CheckCircle2 className="w-4 h-4 text-indigo-600" />
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="p-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 flex flex-col items-center gap-2">
-                        <p className="text-[10px] text-slate-400 font-medium italic">No specific supplier stock records found.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {selectedSupplierId && (
-              <div className="grid gap-1.5 animate-in fade-in duration-200">
-                <Label className="text-xs font-semibold">
-                  Quantity * {selectedProductObj?.base_unit ? `(in ${selectedProductObj.base_unit})` : ""}
-                </Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max={availableStock > 0 ? availableStock : 1}
-                  placeholder="e.g. 50"
-                  value={quantity}
-                  onChange={e => setQuantity(e.target.value)}
-                  disabled={availableStock === 0}
-                  className="h-9 text-sm"
-                />
-                
-                <p className={`text-[11px] font-medium ${
-                  availableStock === 0 ? "text-rose-600" : enteredQty > availableStock ? "text-rose-600 font-bold" : availableStock <= 20 ? "text-amber-600" : "text-emerald-600"
-                }`}>
-                  Available to Dispatch: <strong>{availableStock}</strong> {selectedProductObj?.base_unit || "Pieces"}
-                </p>
-              </div>
-            )}
-
-            {selectedSupplierId && availableStock === 0 && (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 flex items-start gap-2.5 animate-in zoom-in-95 duration-200">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-rose-800">
-                  <p className="font-bold">🚫 This supplier has no available stock.</p>
-                  <p className="text-[11px] text-rose-600 mt-0.5">Please select another supplier with available stock to proceed.</p>
-                </div>
-              </div>
-            )}
-
-            {selectedSupplierId && availableStock > 0 && enteredQty > availableStock && (
-              <div className="rounded-xl border border-rose-300 bg-red-50 p-3 flex items-start gap-2.5 animate-in zoom-in-95 duration-200">
-                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                <div className="text-xs text-red-900 space-y-1">
-                  <p className="font-bold text-red-800">⚠ Insufficient Stock Available.</p>
-                  <p className="text-[11px] text-red-700">
-                    Available Stock: <strong>{availableStock}</strong> {selectedProductObj?.base_unit || "Pieces"}<br />
-                    Requested Dispatch: <strong>{enteredQty}</strong> {selectedProductObj?.base_unit || "Pieces"}
-                  </p>
-                  <p className="text-[11px] font-semibold text-red-800">Reduce quantity or select another supplier.</p>
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 flex items-start gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700">
-                Stock will be picked from the nearest available bins. This action is irreversible and logs an OUTBOUND movement.
-              </p>
-            </div>
-
-            <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-              <Button
-                onClick={handleDispatch}
-                disabled={submitting || isDispatchBlocked}
-                className={`bg-[#1E3A8A] hover:bg-[#162d6e] transition-all ${
-                  isDispatchBlocked ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-              >
-                {submitting ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Dispatching…</>
-                ) : selectedSupplierId && enteredQty > availableStock ? (
-                  <>❌ Insufficient Stock</>
-                ) : (
-                  <><Truck className="w-4 h-4 mr-2" />Dispatch Stock</>
-                )}
-              </Button>
-            </DialogFooter>
-          </div>
-        )}
+        <DialogFooter className="mt-4">
+          <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button 
+            className="bg-teal-600 hover:bg-teal-700" 
+            onClick={handleConfirm} 
+            disabled={submitting}
+          >
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+            Confirm Dispatch
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-/* ── Recent Outbound Movements ── */
-function OutboundMovementsCard({ movements, isLoading, search }) {
+/* ══════ MAIN PAGE ══════ */
+export default function OutboundPage() {
+  const { toast } = useToast();
+  
+  const [search, setSearch]             = useState("");
+  const [movements, setMovements]       = useState([]);
+  const [movLoading, setMovLoading]     = useState(true);
+  
+  const [sos, setSOs]                   = useState([]);
+  const [loadingSO, setLoadingSO]       = useState(true);
+  const [processingSOId, setProcessingSOId] = useState(null);
+  
+  const [dispatchSOObj, setDispatchSOObj]         = useState(null);
+
+  // Load Data
+  const loadData = useCallback(async () => {
+    setMovLoading(true);
+    setLoadingSO(true);
+    try {
+      const [movData, soData] = await Promise.all([
+        listStockMovements(),
+        listSalesOrders()
+      ]);
+      setMovements(toArray(movData));
+      
+      const arr = Array.isArray(soData) ? soData : soData?.results || soData?.data || soData?.items || [];
+      setSOs(arr);
+    } catch (err) {
+      toast({ title: "Failed to load data", description: err.message, variant: "destructive" });
+    } finally {
+      setMovLoading(false);
+      setLoadingSO(false);
+    }
+  }, [toast]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // Handle Pick & Pack transition for SOs
+  const handleStartPickPack = async (soId) => {
+    setProcessingSOId(soId);
+    try {
+      await pickPackSO(soId);
+      toast({ title: "Pick & Pack Started 📦", description: `Sales Order ${soId} is now in Pick & Pack status.` });
+      loadData();
+    } catch (err) {
+      toast({ title: "Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setProcessingSOId(null);
+    }
+  };
+
+  const queueSOs = sos.filter(s => ["Finance Confirmed", "Pick & Pack", "Dispatched"].includes(s.status));
   const q = search.toLowerCase();
-  const filtered = movements.filter(m => 
+  const filteredMovements = movements.filter(m => 
     m.movement_type === "OUTBOUND" && (
       !q ||
       m.product_name?.toLowerCase().includes(q) ||
@@ -417,137 +163,190 @@ function OutboundMovementsCard({ movements, isLoading, search }) {
   );
 
   return (
-    <Card className="shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b bg-muted/30 flex items-center gap-2">
-        <PackageOpen className="w-4 h-4 text-[#1E3A8A]" />
-        <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-          Recent Outbound Movements
-        </p>
-        <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[#1E3A8A] text-white text-[10px] font-bold">
-          {filtered.length}
-        </span>
-      </div>
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/50">
-              <TableHead className="text-xs font-semibold">Product</TableHead>
-              <TableHead className="text-xs font-semibold">Vendor</TableHead>
-              <TableHead className="text-xs font-semibold">Bin</TableHead>
-              <TableHead className="text-xs font-semibold">Batch</TableHead>
-              <TableHead className="text-xs font-semibold text-right">Qty Picked</TableHead>
-              <TableHead className="text-xs font-semibold text-right">Stock After</TableHead>
-              <TableHead className="text-xs font-semibold">When</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-10">
-                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" />
-                </TableCell>
-              </TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center py-10 text-muted-foreground text-sm">
-                  {search ? "No movements match your search." : "No outbound movements found. Dispatch stock to see activity here."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.slice(0, 50).map(m => (
-                <TableRow key={m.id ?? m.movement_id} className="hover:bg-muted/20">
-                  <TableCell className="text-xs font-medium text-gray-800">{m.product_name}</TableCell>
-                  <TableCell className="text-xs text-gray-500">{m.vendor_name || "—"}</TableCell>
-                  <TableCell className="text-xs font-mono text-gray-600">{m.bin_id || "—"}</TableCell>
-                  <TableCell className="text-xs font-mono text-gray-500">{m.batch_number || "—"}</TableCell>
-                  <TableCell className="text-xs text-right tabular-nums font-semibold text-red-600">
-                    -{m.quantity}
-                  </TableCell>
-                  <TableCell className="text-xs text-right tabular-nums text-gray-700">
-                    {m.new_stock}
-                  </TableCell>
-                  <TableCell className="text-xs text-gray-400">
-                    {m.created_at ? new Date(m.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "—"}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-    </Card>
-  );
-}
-
-/* ══════ MAIN PAGE ══════ */
-export default function OutboundPage() {
-  const [search, setSearch]           = useState("");
-  const [movements, setMovements]     = useState([]);
-  const [movLoading, setMovLoading]   = useState(true);
-  const [dispatchOpen, setDispatchOpen] = useState(false);
-
-  const loadMovements = useCallback(async () => {
-    setMovLoading(true);
-    try {
-      const data = await listStockMovements();
-      setMovements(toArray(data));
-    } catch {
-      /* silent */
-    } finally {
-      setMovLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadMovements();
-  }, [loadMovements]);
-
-  return (
-    <div className="space-y-5">
-      {/* ── Toolbar ── */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search dispatch history…"
-            className="pl-9 h-9"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
-              <X className="w-3.5 h-3.5 text-muted-foreground" />
-            </button>
-          )}
+    <div className="space-y-6">
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <Truck className="w-5 h-5 text-[#1E3A8A]" /> Unified Outbound Dispatch
+          </h1>
+          <p className="text-sm text-gray-500 mt-0.5">Manage Sales Orders and manual stock dispatches efficiently with automated FIFO deductions.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="h-9" onClick={loadMovements}>
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Refresh
-          </Button>
-          <Button
-            size="sm"
-            className="h-9 bg-[#1E3A8A] hover:bg-[#162d6e]"
-            onClick={() => setDispatchOpen(true)}
-          >
-            <Truck className="w-4 h-4 mr-1.5" /> Dispatch Stock
+          <Button size="sm" variant="outline" className="h-9" onClick={loadData}>
+            <RefreshCw className="w-4 h-4 mr-2" /> Refresh Data
           </Button>
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900 tracking-tight flex items-center gap-2">
-            <PackageOpen className="w-5 h-5 text-[#1E3A8A]" />
-            Outbound Dispatch History
-          </h2>
+      {/* ── Sales Order Dispatch Queue ── */}
+      <Card className="shadow-sm overflow-hidden border-indigo-100">
+        <div className="px-4 py-3 border-b bg-indigo-50/50 flex items-center justify-between">
+          <p className="text-xs font-bold text-indigo-900 uppercase tracking-wide flex items-center gap-2">
+            <ShoppingBag className="w-4 h-4 text-indigo-700" /> Sales Order Queue
+            <span className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+              {sos.filter(s => ["Finance Confirmed", "Pick & Pack"].includes(s.status)).length} Pending
+            </span>
+          </p>
         </div>
-        <OutboundMovementsCard movements={movements} isLoading={movLoading} search={search} />
-      </div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-white hover:bg-white">
+                <TableHead className="text-xs font-semibold text-slate-500">SO ID</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500">Customer</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500">Product Details</TableHead>
+                <TableHead className="text-xs font-semibold text-right text-slate-500">Qty</TableHead>
+                <TableHead className="text-xs font-semibold text-right text-slate-500">Payment</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-500">Status</TableHead>
+                <TableHead className="text-xs font-semibold text-center text-slate-500 w-[160px]">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loadingSO ? (
+                <TableRow><TableCell colSpan={7} className="py-12 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-400" /></TableCell></TableRow>
+              ) : queueSOs.length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="py-12 text-center text-sm font-medium text-slate-400">No pending outbound Sales Orders in the queue.</TableCell></TableRow>
+              ) : queueSOs.map(s => (
+                <TableRow key={s.so_id} className="hover:bg-slate-50/50 transition-colors group">
+                  <TableCell className="text-xs font-mono font-bold text-indigo-700">{s.so_id}</TableCell>
+                  <TableCell>
+                    <div className="text-xs font-bold text-slate-800">{s.customer_name}</div>
+                    <div className="text-[10px] text-slate-500">{s.customer_phone}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-xs font-semibold text-slate-700">{s.product_name}</div>
+                  </TableCell>
+                  <TableCell className="text-xs text-right font-bold tabular-nums text-slate-700">{s.quantity}</TableCell>
+                  <TableCell className="text-xs text-right">
+                    {s.payment_info ? (
+                      <div className="text-[10px] leading-tight text-right text-emerald-700">
+                        <span className="font-bold capitalize">{s.payment_info.payment_type}</span>
+                        <div>₹{parseFloat(s.payment_info.amount_received || 0).toLocaleString("en-IN")}</div>
+                      </div>
+                    ) : <span className="font-bold text-emerald-700 text-[10px]">Paid</span>}
+                  </TableCell>
+                  <TableCell><SOPill status={s.status} /></TableCell>
+                  <TableCell className="text-center">
+                    {s.status === "Finance Confirmed" && (
+                      <Button
+                        size="sm"
+                        disabled={processingSOId === s.so_id}
+                        className="h-8 w-full text-xs font-bold bg-[#1E3A8A] hover:bg-[#162d6e] shadow-sm transition-all group-hover:scale-105"
+                        onClick={() => handleStartPickPack(s.so_id)}
+                      >
+                        {processingSOId === s.so_id ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <PackageOpen className="w-3.5 h-3.5 mr-1.5" />}
+                        Pick &amp; Pack
+                      </Button>
+                    )}
+                    {s.status === "Pick & Pack" && (
+                      <Button
+                        size="sm"
+                        className="h-8 w-full text-xs font-bold bg-teal-600 hover:bg-teal-700 shadow-sm transition-all group-hover:scale-105"
+                        onClick={() => setDispatchSOObj(s)}
+                      >
+                        <Truck className="w-3.5 h-3.5 mr-1.5" />
+                        Dispatch Now
+                      </Button>
+                    )}
+                    {s.status === "Dispatched" && (
+                      <span className="text-xs text-teal-700 font-bold flex items-center justify-center gap-1.5 bg-teal-50 py-1.5 rounded-md">
+                        <CheckCircle2 className="w-4 h-4 text-teal-600" /> Dispatched
+                      </span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
 
-      {dispatchOpen && (
-        <DispatchDialog
-          onClose={() => setDispatchOpen(false)}
-          onSuccess={loadMovements}
+      {/* ── Outbound Movement History ── */}
+      <Card className="shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <PackageOpen className="w-4 h-4 text-[#1E3A8A]" />
+            <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+              Recent Physical Stock Deductions
+            </p>
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 text-[10px] font-bold">
+              {filteredMovements.length}
+            </span>
+          </div>
+          
+          <div className="relative max-w-xs w-full">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search history…"
+              className="pl-8 h-8 text-xs bg-white"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                <X className="w-3.5 h-3.5 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-muted/50 backdrop-blur-sm">
+              <TableRow>
+                <TableHead className="text-xs font-semibold">Product</TableHead>
+                <TableHead className="text-xs font-semibold">Picked Bin</TableHead>
+                <TableHead className="text-xs font-semibold">Supplier / Batch</TableHead>
+                <TableHead className="text-xs font-semibold text-right">Qty Deducted</TableHead>
+                <TableHead className="text-xs font-semibold text-right">Bin Stock After</TableHead>
+                <TableHead className="text-xs font-semibold">Timestamp</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {movLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-300" />
+                  </TableCell>
+                </TableRow>
+              ) : filteredMovements.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-10 text-slate-400 text-sm font-medium">
+                    {search ? "No outbound movements match your search." : "No physical outbound movements found."}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredMovements.slice(0, 100).map(m => (
+                  <TableRow key={m.id ?? m.movement_id} className="hover:bg-slate-50/50">
+                    <TableCell className="text-xs font-bold text-slate-800">{m.product_name}</TableCell>
+                    <TableCell className="text-xs font-mono text-slate-700 bg-slate-100/50 rounded">{m.bin_id || "—"}</TableCell>
+                    <TableCell>
+                      <div className="text-xs text-slate-600 font-medium">{m.vendor_name || "—"}</div>
+                      <div className="text-[10px] font-mono text-slate-400">Batch: {m.batch_number || "—"}</div>
+                    </TableCell>
+                    <TableCell className="text-xs text-right tabular-nums font-bold text-rose-600">
+                      -{m.quantity}
+                    </TableCell>
+                    <TableCell className="text-xs text-right tabular-nums font-semibold text-slate-600">
+                      {m.new_stock}
+                    </TableCell>
+                    <TableCell className="text-[10px] text-slate-400 font-medium">
+                      {m.created_at ? new Date(m.created_at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+
+      {/* ── Dialogs ── */}
+      {dispatchSOObj && (
+        <ConfirmSODispatchDialog
+          so={dispatchSOObj}
+          onClose={() => setDispatchSOObj(null)}
+          onSuccess={loadData}
         />
       )}
     </div>

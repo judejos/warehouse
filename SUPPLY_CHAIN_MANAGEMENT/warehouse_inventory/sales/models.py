@@ -16,6 +16,45 @@ from django.conf import settings
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CUSTOMER
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Customer(models.Model):
+    STATUS_CHOICES = [
+        ("Active", "Active"),
+        ("Inactive", "Inactive"),
+    ]
+
+    customer_id    = models.CharField(max_length=10, primary_key=True, editable=False)
+    company_name   = models.CharField(max_length=150)
+    contact_person = models.CharField(max_length=150, blank=True, default="")
+    email          = models.EmailField(blank=True, default="")
+    phone          = models.CharField(max_length=20)
+    location       = models.TextField(blank=True, default="")
+    gstin          = models.CharField(max_length=15, blank=True, default="")
+    status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Active")
+
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Customer"
+        verbose_name_plural = "Customers"
+
+    def save(self, *args, **kwargs):
+        if not self.customer_id:
+            with transaction.atomic():
+                last = Customer.objects.select_for_update().order_by("-customer_id").first()
+                new_id = (int(last.customer_id[3:]) + 1) if last else 1
+                self.customer_id = f"CUS{new_id:04d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.customer_id} | {self.company_name}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CUSTOMER PURCHASE REQUEST  (CPR)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -29,7 +68,12 @@ class CustomerPurchaseRequest(models.Model):
 
     cpr_id             = models.CharField(max_length=10, primary_key=True, editable=False)
 
-    # Customer details
+    # Linked Customer (optional for backwards compatibility)
+    customer           = models.ForeignKey(
+        Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name="cprs"
+    )
+
+    # Customer details snapshots
     customer_name      = models.CharField(max_length=150)
     customer_phone     = models.CharField(max_length=20)
     customer_email     = models.EmailField(blank=True, default="")

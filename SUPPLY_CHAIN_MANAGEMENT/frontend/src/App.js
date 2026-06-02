@@ -18,6 +18,8 @@ import ASNPage            from "./pages/ASNPage";
 import GRNPage            from "./pages/GRNPage";
 import SuppliersPage      from "./pages/SuppliersPage";
 import AddSupplierPage    from "./pages/AddSupplierPage";
+import CustomersPage      from "./pages/CustomersPage";
+import AddCustomerPage    from "./pages/AddCustomerPage";
 import WarehousesPage     from "./pages/WarehousesPage";
 import OutboundPage       from "./pages/OutboundPage";
 import QualityCheckPage   from "./pages/QualityCheckPage";
@@ -32,6 +34,15 @@ import SalesManagerPage from "./pages/SalesManagerPage";
 import InventoryStockCheckPage from "./pages/InventoryStockCheckPage";
 import SupervisorOrderApprovalPage from "./pages/SupervisorOrderApprovalPage";
 import SalesFinancePage from "./pages/SalesFinancePage";
+
+// Sales — split sidebar pages
+import SalesPurchaseRequestsPage from "./pages/SalesPurchaseRequestsPage";
+import SalesOrdersPage from "./pages/SalesOrdersPage";
+import SalesPaymentsPage from "./pages/SalesPaymentsPage";
+
+// Sales Finance — split sidebar pages
+import SalesAwaitingConfirmationPage from "./pages/SalesAwaitingConfirmationPage";
+import SalesConfirmedPaymentsPage from "./pages/SalesConfirmedPaymentsPage";
 
 // Auth Pages
 import LoginPage             from "./pages/auth/LoginPage";
@@ -103,6 +114,10 @@ const App = () => (
               <Route path="/suppliers"        element={<RoleGuard allowedRoles={["admin","inventory_manager","manager"]}><SuppliersPage /></RoleGuard>} />
               <Route path="/suppliers/create" element={<RoleGuard allowedRoles={["admin","inventory_manager","manager"]}><AddSupplierPage /></RoleGuard>} />
 
+              {/* ── Customers (admin + sales_manager + manager) ── */}
+              <Route path="/customers"        element={<RoleGuard allowedRoles={["admin","sales_manager","manager"]}><CustomersPage /></RoleGuard>} />
+              <Route path="/customers/create" element={<RoleGuard allowedRoles={["admin","sales_manager","manager"]}><AddCustomerPage /></RoleGuard>} />
+
               {/* ── Inventory / Operations ── */}
               <Route path="/inventory"         element={<InventoryPage />} />
               <Route path="/purchase-requests" element={<PurchaseRequestsPage />} />
@@ -122,11 +137,26 @@ const App = () => (
               {/* ── Finance ── */}
               <Route path="/finance" element={<RoleGuard allowedRoles={["admin","finance_director"]}><FinancePage /></RoleGuard>} />
 
-              {/* ── Sales Manager Workflow ── */}
-              <Route path="/sales"           element={<RoleGuard allowedRoles={["admin","sales_manager"]}><SalesManagerPage /></RoleGuard>} />
-              <Route path="/stock-check"     element={<RoleGuard allowedRoles={["admin","inventory_manager"]}><InventoryStockCheckPage /></RoleGuard>} />
-              <Route path="/order-approval"  element={<RoleGuard allowedRoles={["admin","supervisor"]}><SupervisorOrderApprovalPage /></RoleGuard>} />
-              <Route path="/sales-finance"   element={<RoleGuard allowedRoles={["admin","finance_director"]}><SalesFinancePage /></RoleGuard>} />
+              {/* ── Sales Manager Workflow (legacy combined route kept) ── */}
+              <Route path="/sales"                       element={<RoleGuard allowedRoles={["admin","sales_manager"]}><SalesManagerPage /></RoleGuard>} />
+
+              {/* ── Sales Manager — split sidebar pages ── */}
+              <Route path="/sales/purchase-requests"     element={<RoleGuard allowedRoles={["admin","sales_manager"]}><SalesPurchaseRequestsPage /></RoleGuard>} />
+              <Route path="/sales/orders"                element={<RoleGuard allowedRoles={["admin","sales_manager"]}><SalesOrdersPage /></RoleGuard>} />
+              <Route path="/sales/payments"              element={<RoleGuard allowedRoles={["admin","sales_manager"]}><SalesPaymentsPage /></RoleGuard>} />
+
+              {/* ── Stock Approvals (CPR only, no dispatch tab) ── */}
+              <Route path="/stock-check"                 element={<RoleGuard allowedRoles={["admin","inventory_manager"]}><InventoryStockCheckPage /></RoleGuard>} />
+
+              {/* ── Supervisor Order Approval ── */}
+              <Route path="/order-approval"              element={<RoleGuard allowedRoles={["admin","supervisor"]}><SupervisorOrderApprovalPage /></RoleGuard>} />
+
+              {/* ── Sales Finance (legacy combined route kept) ── */}
+              <Route path="/sales-finance"               element={<RoleGuard allowedRoles={["admin","finance_director"]}><SalesFinancePage /></RoleGuard>} />
+
+              {/* ── Sales Finance — split sidebar pages ── */}
+              <Route path="/sales-finance/awaiting"      element={<RoleGuard allowedRoles={["admin","finance_director"]}><SalesAwaitingConfirmationPage /></RoleGuard>} />
+              <Route path="/sales-finance/confirmed"     element={<RoleGuard allowedRoles={["admin","finance_director"]}><SalesConfirmedPaymentsPage /></RoleGuard>} />
 
               {/* ── Admin only ── */}
               <Route path="/users"    element={<RoleGuard allowedRoles={["admin"]}><UsersPage /></RoleGuard>} />

@@ -178,6 +178,35 @@ class Product(models.Model):
         """
         return self.re_order or self.reorder_point or 0
 
+    @property
+    def allocated_stock(self):
+        """Total stock reserved for confirmed CPRs and active Sales Orders (not yet dispatched)."""
+        from sales.models import CustomerPurchaseRequest, SalesOrder
+        from django.db.models import Sum
+        
+        cpr_alloc = CustomerPurchaseRequest.objects.filter(
+            product=self, status="Stock Confirmed"
+        ).aggregate(total=Sum("requested_quantity"))["total"] or 0
+        
+        so_alloc = SalesOrder.objects.filter(
+            product=self,
+            status__in=["Pending Supervisor", "Supervisor Approved", "Payment Pending", "Finance Confirmed", "Pick & Pack"]
+        ).aggregate(total=Sum("quantity"))["total"] or 0
+        
+        return cpr_alloc + so_alloc
+
+    @property
+    def total_stock(self):
+        """Total physical inventory present in the warehouse."""
+        from Inventory.models import Inventory
+        from django.db.models import Sum
+        return Inventory.objects.filter(product=self).aggregate(total=Sum("quantity"))["total"] or 0
+
+    @property
+    def available_stock(self):
+        """Total physical inventory minus allocated stock."""
+        return self.total_stock - self.allocated_stock
+
     def __str__(self):
         return f"{self.product_name} ({self.product_id})"
 

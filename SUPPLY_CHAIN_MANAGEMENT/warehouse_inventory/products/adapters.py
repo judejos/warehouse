@@ -51,6 +51,8 @@ def _product_to_dict(p) -> dict:
         "reorder_point":     p.reorder_point,
         "avg_lead_time":     p.avg_lead_time,
         "avg_daily_sales":   p.avg_daily_sales,
+        "total_stock":       p.total_stock,
+        "available_stock":   p.available_stock,
         # Packaging
         "package_type":      p.package_type,
         "base_unit":         p.base_unit,

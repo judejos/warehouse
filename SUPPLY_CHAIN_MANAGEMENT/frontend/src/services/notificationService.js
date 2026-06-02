@@ -23,11 +23,20 @@ export async function fetchNotifications() {
 export async function fetchUnreadCount() {
   const headers = authHeaders();
   if (!headers.Authorization) return { count: 0 };
-  const res = await fetch(`${BASE}/notifications/unread-count/`, {
-    headers: headers,
-  });
-  if (!res.ok) return { count: 0 };
-  return res.json();
+  try {
+    const res = await fetch(`${BASE}/notifications/unread-count/`, {
+      headers: headers,
+    });
+    if (!res.ok) {
+      const errData = await res.text();
+      console.error("Unread count fetch failed:", res.status, errData);
+      return { count: 0 };
+    }
+    return await res.json();
+  } catch (err) {
+    console.error("Unread count fetch error:", err);
+    return { count: 0 };
+  }
 }
 
 /**

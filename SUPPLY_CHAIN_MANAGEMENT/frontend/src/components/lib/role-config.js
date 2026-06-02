@@ -18,28 +18,37 @@ import {
 } from "lucide-react";
 
 const allModules = {
-  dashboard:        { title: "Dashboard",        url: "/dashboard",         icon: LayoutDashboard },
-  products:         { title: "Product",           url: "/products",          icon: Package },
-  inventory:        { title: "Inventory",         url: "/inventory",         icon: Package },
-  purchaseRequests: { title: "Purchase Requests", url: "/purchase-requests", icon: FileText },
-  asn:              { title: "ASN",               url: "/asn",               icon: Truck },
-  grn:              { title: "GRN",               url: "/grn",               icon: ClipboardCheck },
-  qualityCheck:     { title: "QC",                url: "/quality-check",     icon: CheckSquare },
-  users:            { title: "Users",             url: "/users",             icon: Users },
-  vendors:          { title: "Vendor",            url: "/vendors",           icon: Building2 },
-  suppliers:        { title: "Customer",          url: "/suppliers",         icon: UserCheck },
-  warehouses:       { title: "Warehouse",         url: "/warehouses",        icon: Warehouse },
-  outbound:         { title: "Outbound Orders",   url: "/outbound",          icon: PackageOpen },
-  finance:          { title: "Finance",           url: "/finance",           icon: DollarSign },
-  settings:         { title: "Settings",          url: "/settings",          icon: Settings },
-  scanner:          { title: "Barcode Scanner",   url: "/barcode-scanner",   icon: ScanLine },
-  rejections:       { title: "QC Rejections",     url: "/rejections",        icon: ShieldAlert },
-  
-  // Sales Flow Modules
-  salesManager:     { title: "Sales Dashboard",   url: "/sales",             icon: ShoppingCart },
-  stockCheck:       { title: "Stock Check",       url: "/stock-check",       icon: CheckSquare },
-  orderApproval:    { title: "Order Approval",    url: "/order-approval",    icon: ClipboardCheck },
-  salesFinance:     { title: "Sales Finance",     url: "/sales-finance",     icon: DollarSign },
+  dashboard:        { title: "Dashboard",            url: "/dashboard",              icon: LayoutDashboard },
+  products:         { title: "Product",              url: "/products",               icon: Package },
+  inventory:        { title: "Inventory",            url: "/inventory",              icon: Package },
+  purchaseRequests: { title: "Purchase Requests",    url: "/purchase-requests",      icon: FileText },
+  asn:              { title: "ASN",                  url: "/asn",                    icon: Truck },
+  grn:              { title: "GRN",                  url: "/grn",                    icon: ClipboardCheck },
+  qualityCheck:     { title: "QC",                   url: "/quality-check",          icon: CheckSquare },
+  users:            { title: "Users",                url: "/users",                  icon: Users },
+  vendors:          { title: "Vendor",               url: "/vendors",                icon: Building2 },
+  suppliers:        { title: "Supplier",             url: "/suppliers",              icon: Truck },
+  customers:        { title: "Customer",             url: "/customers",              icon: UserCheck },
+  warehouses:       { title: "Warehouse",            url: "/warehouses",             icon: Warehouse },
+  outbound:         { title: "Outbound Orders",      url: "/outbound",               icon: PackageOpen },
+  finance:          { title: "Finance",              url: "/finance",                icon: DollarSign },
+  settings:         { title: "Settings",             url: "/settings",               icon: Settings },
+  scanner:          { title: "Barcode Scanner",      url: "/barcode-scanner",        icon: ScanLine },
+  rejections:       { title: "QC Rejections",        url: "/rejections",             icon: ShieldAlert },
+
+  purchaseRequestsSales: { title: "Customer PRs", url: "/sales/purchase-requests", icon: ShoppingCart },
+  salesOrders:           { title: "Sales Orders",       url: "/sales/orders",            icon: FileText },
+  salesPayments:         { title: "Payments",           url: "/sales/payments",          icon: DollarSign },
+
+  // ── Stock Approvals (CPR only, no dispatch) ──
+  stockApprovals:   { title: "Stock Approvals",      url: "/stock-check",            icon: CheckSquare },
+
+  // ── Supervisor Order Approval ──
+  orderApproval:    { title: "Order Approval",       url: "/order-approval",         icon: ClipboardCheck },
+
+  // ── Sales Finance (split into individual sidebar entries) ──
+  awaitingConfirmation: { title: "Awaiting Confirmation", url: "/sales-finance/awaiting",   icon: DollarSign },
+  confirmedPayments:    { title: "Confirmed Payments",     url: "/sales-finance/confirmed",  icon: ClipboardCheck },
 };
 
 const roleModules = {
@@ -54,6 +63,7 @@ const roleModules = {
     "scanner",
     "vendors",
     "suppliers",
+    "customers",
     "inventory",
     "products",
     "outbound",
@@ -61,14 +71,21 @@ const roleModules = {
     "finance",
     "rejections",
     "settings",
-    "salesManager",
-    "stockCheck",
+    // Sales Manager workflow
+    "purchaseRequestsSales",
+    "salesOrders",
+    "salesPayments",
+    // Stock Approvals
+    "stockApprovals",
+    // Supervisor Order Approval
     "orderApproval",
-    "salesFinance"
+    // Sales Finance
+    "awaitingConfirmation",
+    "confirmedPayments",
   ],
   // Operational managers
   manager: [
-    "dashboard", "purchaseRequests", "asn", "outbound", "rejections", "vendors", "suppliers", "products", "inventory"
+    "dashboard", "purchaseRequests", "asn", "outbound", "rejections", "vendors", "suppliers", "customers", "products", "inventory"
   ],
   // Warehouse supervisor
   supervisor: [
@@ -83,15 +100,18 @@ const roleModules = {
   ],
   // Finance
   finance_director: [
-    "dashboard", "purchaseRequests", "finance", "salesFinance"
+    "dashboard", "purchaseRequests", "finance", "awaitingConfirmation", "confirmedPayments"
   ],
   // Inventory manager
   inventory_manager: [
-    "dashboard", "vendors", "suppliers", "scanner", "inventory", "products", "warehouses", "stockCheck"
+    "dashboard", "vendors", "suppliers", "scanner", "inventory", "products", "warehouses",
+    "stockApprovals", "outbound"
   ],
   // Sales manager
   sales_manager: [
-    "dashboard", "salesManager"
+    "dashboard",
+    "customers",
+    "purchaseRequestsSales", "salesOrders", "salesPayments"
   ],
 };
 

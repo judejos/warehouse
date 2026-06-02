@@ -697,23 +697,28 @@ class UnreadCountView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user_role = get_sender_role(request.user)
-        if not user_role:
-            return Response({"count": 0})
+        try:
+            user_role = get_sender_role(request.user)
+            if not user_role:
+                return Response({"count": 0})
 
-        from django.db.models import Q
-        total = Notification.objects.filter(
-            Q(recipient_role=user_role) | Q(recipient=request.user)
-        ).exclude(sender=request.user).count()
-
-        read_count = NotificationRead.objects.filter(
-            user=request.user,
-            notification__in=Notification.objects.filter(
+            from django.db.models import Q
+            total = Notification.objects.filter(
                 Q(recipient_role=user_role) | Q(recipient=request.user)
-            ).exclude(sender=request.user),
-        ).count()
+            ).exclude(sender=request.user).count()
 
-        return Response({"count": max(0, total - read_count)}, status=200)
+            read_count = NotificationRead.objects.filter(
+                user=request.user,
+                notification__in=Notification.objects.filter(
+                    Q(recipient_role=user_role) | Q(recipient=request.user)
+                ).exclude(sender=request.user),
+            ).count()
+
+            return Response({"count": max(0, total - read_count)}, status=200)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
 
 
 class MarkReadView(APIView):

@@ -1,5 +1,7 @@
 from django.urls import path
 from .views import (
+    CustomerListCreateView,
+    CustomerDetailView,
     CPRListCreateView,
     CPRInventoryActionView,
     SOListCreateView,
@@ -12,6 +14,9 @@ from .views import (
 )
 
 urlpatterns = [
+    path("customers/", CustomerListCreateView.as_view(), name="customer-list-create"),
+    path("customers/<str:customer_id>/", CustomerDetailView.as_view(), name="customer-detail"),
+
     # ── Customer Purchase Request ──────────────────────────────────────────
     path("cpr/",                              CPRListCreateView.as_view(),      name="cpr-list-create"),
     path("cpr/<str:cpr_id>/inventory-action/", CPRInventoryActionView.as_view(), name="cpr-inventory-action"),

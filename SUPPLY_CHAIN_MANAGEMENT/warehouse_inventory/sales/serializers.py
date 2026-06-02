@@ -2,7 +2,18 @@
 sales/serializers.py
 """
 from rest_framework import serializers
-from .models import CustomerPurchaseRequest, SalesOrder, SOPayment
+from .models import Customer, CustomerPurchaseRequest, SalesOrder, SOPayment
+
+
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Customer
+        fields = [
+            "customer_id", "company_name", "contact_person", "email",
+            "phone", "location", "gstin", "status",
+            "created_at", "updated_at"
+        ]
+        read_only_fields = ["customer_id", "created_at", "updated_at"]
 
 
 class CustomerPurchaseRequestSerializer(serializers.ModelSerializer):
@@ -14,7 +25,7 @@ class CustomerPurchaseRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model  = CustomerPurchaseRequest
         fields = [
-            "cpr_id", "customer_name", "customer_phone", "customer_email",
+            "cpr_id", "customer", "customer_name", "customer_phone", "customer_email",
             "customer_address", "customer_gstin",
             "product", "product_id", "product_name",
             "requested_quantity", "unit_price", "total_amount",

@@ -146,6 +146,13 @@ export const forceChangePassword = (newPassword, confirmPassword) =>
 
 export const logout = (data = {}) => apiRequest('/auth/logout/', 'POST', data);
 
+/* ================= CUSTOMERS ================= */
+
+export const listCustomers = () => apiRequest('/sales/customers/');
+export const createCustomer = (data) => apiRequest('/sales/customers/', 'POST', data);
+export const updateCustomer = (customerId, data) => apiRequest(`/sales/customers/${customerId}/`, 'PATCH', data);
+export const deleteCustomer = (customerId) => apiRequest(`/sales/customers/${customerId}/`, 'DELETE');
+
 /* ================= EMPLOYEE ================= */
 
 export const adminCreateUser = (data) =>
@@ -470,6 +477,7 @@ export const getPutawayByGRN = (grnId) =>
 export const outboundPick = (productId, data) => 
   apiRequest(`/inventory/outbound/pick/${productId}/`, 'POST', data);
 
+
 /* ================= BACKWARD COMPATIBILITY ALIASES ================= */
 
 // GRN Aliases
@@ -493,6 +501,7 @@ export const confirmRejection = (itemId) =>
   apiRequest(`/inventory/rejections/${itemId}/confirm/`, 'POST');
 
 /* ================= SALES ================= */
+
 
 // CPR (Customer Purchase Requests)
 export const listCPRs = (all = false) => 

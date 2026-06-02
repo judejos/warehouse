@@ -17,13 +17,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 
-from .models import CustomerPurchaseRequest, SalesOrder, SOPayment
+from .models import Customer, CustomerPurchaseRequest, SalesOrder, SOPayment
 from .serializers import (
+    CustomerSerializer,
     CustomerPurchaseRequestSerializer,
     SalesOrderSerializer,
     SOPaymentSerializer,
 )
 from rbac.models import Notification
+from Inventory.models import Inventory, StockMovement
+from django.db import transaction
 
 
 # ─────────────────────────────────────────────
@@ -47,6 +50,77 @@ def send_notification(sender, sender_role, recipient_role, ntype, title, message
         message=message,
         redirect_url=url,
     )
+
+
+# ─────────────────────────────────────────────
+# CUSTOMERS
+# ─────────────────────────────────────────────
+
+class CustomerListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        role = get_role(request)
+        if role not in ("admin", "sales_manager", "finance_director", "manager"):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        customers = Customer.objects.all()
+        return Response(CustomerSerializer(customers, many=True).data)
+
+    def post(self, request):
+        role = get_role(request)
+        if role not in ("admin", "sales_manager"):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = CustomerSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CustomerDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, customer_id):
+        try:
+            customer = Customer.objects.get(customer_id=customer_id)
+        except Customer.DoesNotExist:
+            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(CustomerSerializer(customer).data)
+
+    def patch(self, request, customer_id):
+        role = get_role(request)
+        if role not in ("admin", "sales_manager"):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            customer = Customer.objects.get(customer_id=customer_id)
+        except Customer.DoesNotExist:
+            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = CustomerSerializer(customer, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, customer_id):
+        role = get_role(request)
+        if role not in ("admin", "sales_manager"):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+            
+        try:
+            customer = Customer.objects.get(customer_id=customer_id)
+        except Customer.DoesNotExist:
+            return Response({"error": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+            
+        # Optional: check if customer has linked CPRs before deleting
+        if customer.cprs.exists():
+            return Response({"error": "Cannot delete customer with existing purchase requests."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        customer.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ─────────────────────────────────────────────
@@ -436,8 +510,61 @@ class SODispatchView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        so.status = "Dispatched"
-        so.save()
+        with transaction.atomic():
+            # Lock the inventory rows for this product
+            inventories = list(
+                Inventory.objects.select_for_update()
+                .select_related("product", "vendor", "batch", "bin")
+                .filter(product=so.product, quantity__gt=0)
+                .order_by("bin__distance_from_dispatch", "bin__pick_count")
+            )
+            
+            total_available = sum(inv.quantity for inv in inventories)
+            if so.quantity > total_available:
+                return Response(
+                    {"error": f"Insufficient physical stock! Required: {so.quantity}, Available: {total_available}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            remaining = so.quantity
+            for inv in inventories:
+                if remaining <= 0:
+                    break
+
+                deduct = min(inv.quantity, remaining)
+                prev_qty = inv.quantity
+                inv.quantity -= deduct
+                inv.save()
+
+                # Update bin stats
+                b = inv.bin
+                b.current_load -= deduct
+                b.current_weight_kg = max(
+                    0.0, b.current_weight_kg - deduct * (inv.product.weight_kg or 0)
+                )
+                b.used_volume_cm3 = max(
+                    0.0, b.used_volume_cm3 - deduct * (inv.product.volume_cm3 or 0)
+                )
+                b.pick_count += 1
+                b.last_picked_at = timezone.now()
+                b.save()
+
+                # Record stock movement
+                StockMovement.objects.create(
+                    product=inv.product,
+                    vendor=inv.vendor,
+                    batch=inv.batch,
+                    bin=b,
+                    movement_type="OUTBOUND",
+                    quantity=deduct,
+                    previous_stock=prev_qty,
+                    new_stock=inv.quantity,
+                )
+
+                remaining -= deduct
+
+            so.status = "Dispatched"
+            so.save()
 
         send_notification(
             sender=request.user,
@@ -447,7 +574,7 @@ class SODispatchView(APIView):
             title=f"SO {so.so_id} — Dispatched 🚚",
             message=(
                 f"SO {so.so_id} for customer '{so.cpr.customer_name}' has been dispatched. "
-                f"{so.quantity} units of {so.product.product_name} are on their way."
+                f"{so.quantity} units of {so.product.product_name} have been deducted from inventory and shipped."
             ),
             url="/sales",
         )

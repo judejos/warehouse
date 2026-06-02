@@ -29,6 +29,9 @@ class ProductSerializer(serializers.ModelSerializer):
     zone_type      = serializers.CharField(source="zone.zone_type", read_only=True,
                                            allow_null=True)
     effective_reorder_point = serializers.ReadOnlyField()
+    allocated_stock = serializers.ReadOnlyField()
+    available_stock = serializers.ReadOnlyField()
+    total_stock     = serializers.ReadOnlyField()
 
     class Meta:
         model  = Product
@@ -38,7 +41,7 @@ class ProductSerializer(serializers.ModelSerializer):
             # Inventory classification
             "ABC", "XYZ", "VED",
             "re_order", "reorder_point", "avg_lead_time", "avg_daily_sales",
-            "effective_reorder_point",
+            "effective_reorder_point", "total_stock", "allocated_stock", "available_stock",
             # Packaging & units
             "package_type", "base_unit", "purchase_unit",
             "conversion_factor", "carton_price", "gst_percent", "unit_price",
@@ -56,7 +59,7 @@ class ProductSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "product_id", "sku_code", "unit_price", "volume_cm3",
             "reorder_point", "avg_lead_time", "avg_daily_sales",
-            "effective_reorder_point",
+            "effective_reorder_point", "total_stock", "allocated_stock", "available_stock",
             "is_first_vendor", "is_multi_vendor",
             "created_at", "updated_at",
         ]
