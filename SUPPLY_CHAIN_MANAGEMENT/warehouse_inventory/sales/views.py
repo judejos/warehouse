@@ -631,3 +631,72 @@ class SOPaymentListView(APIView):
 
         serializer = SOPaymentSerializer(qs, many=True)
         return Response(serializer.data)
+
+
+# ─────────────────────────────────────────────
+# SO — Record Balance Payment
+# ─────────────────────────────────────────────
+
+class SOBalancePaymentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, so_id):
+        role = get_role(request)
+        if role not in ("admin", "sales_manager"):
+            return Response({"error": "Only Sales Managers can record balance payments."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            so = SalesOrder.objects.select_related("payment").get(so_id=so_id)
+        except SalesOrder.DoesNotExist:
+            return Response({"error": "Sales Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not hasattr(so, "payment"):
+            return Response({"error": "No initial payment found for this SO."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Allow recording balance if status is Dispatched
+        if so.status != "Dispatched":
+            return Response(
+                {"error": f"SO must be 'Dispatched' before recording final balance payment. Current: '{so.status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from decimal import Decimal
+        amount_val = request.data.get("amount", 0)
+        try:
+            amount = Decimal(str(amount_val))
+        except:
+            return Response({"error": "Invalid amount format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount <= 0:
+            return Response({"error": "Invalid amount."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment = so.payment
+        if amount > payment.balance_due:
+            return Response({"error": "Amount exceeds balance due."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update payment
+        payment.amount_received = payment.amount_received + amount
+        # payment.balance_due is auto-calculated on save in models.py
+        
+        notes = request.data.get("notes", "")
+        if notes:
+            payment.payment_notes = (payment.payment_notes + f"\nBalance Payment Note: {notes}").strip()
+            
+        payment.save()
+
+        # Send notification
+        send_notification(
+            sender=request.user,
+            sender_role="sales_manager",
+            recipient_role="finance_director",
+            ntype="payment",
+            title=f"Balance Payment Received — SO {so.so_id}",
+            message=(
+                f"Balance payment of ₹{amount} received for SO {so.so_id}. "
+                f"Remaining Balance: ₹{payment.balance_due}."
+            ),
+            url="/sales-finance/confirmed",
+        )
+
+        return Response({"message": "Balance payment recorded successfully.", "balance_due": payment.balance_due})
+

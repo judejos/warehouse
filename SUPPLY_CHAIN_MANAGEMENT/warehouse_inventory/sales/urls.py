@@ -11,6 +11,7 @@ from .views import (
     SODispatchView,
     SOPickPackView,
     SOPaymentListView,
+    SOBalancePaymentView,
 )
 
 urlpatterns = [
@@ -28,6 +29,7 @@ urlpatterns = [
     path("so/<str:so_id>/finance-confirm/",    SOFinanceConfirmView.as_view(),   name="so-finance-confirm"),
     path("so/<str:so_id>/pick-pack/",          SOPickPackView.as_view(),         name="so-pick-pack"),
     path("so/<str:so_id>/dispatch/",           SODispatchView.as_view(),         name="so-dispatch"),
+    path("so/<str:so_id>/balance-payment/",    SOBalancePaymentView.as_view(),   name="so-balance-payment"),
 
     # ── Payments ───────────────────────────────────────────────────────────
     path("payments/",                          SOPaymentListView.as_view(),      name="payment-list"),
