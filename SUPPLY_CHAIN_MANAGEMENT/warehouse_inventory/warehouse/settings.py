@@ -25,7 +25,6 @@ INSTALLED_APPS = [
     'rest_framework',   # added for JWT
 
     'vendors',
-    'supplier',
     'products',
     'Inventory',
     'rbac.apps.RbacConfig',

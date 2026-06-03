@@ -27,7 +27,7 @@ const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/; // lower + uppe
 
 const FEATURES = [
   { icon: Package,        title: "Inventory Management", desc: "Real-time stock tracking"     },
-  { icon: Truck,          title: "Supply Chain",          desc: "Vendor & supplier management" },
+  { icon: Truck,          title: "Supply Chain",          desc: "Vendor management" },
   { icon: ClipboardCheck, title: "Quality Control",       desc: "QC workflow & approvals"      },
   { icon: TrendingUp,     title: "Analytics",             desc: "Reports & insights"           },
 ];

@@ -27,7 +27,6 @@ const allModules = {
   qualityCheck:     { title: "QC",                   url: "/quality-check",          icon: CheckSquare },
   users:            { title: "Users",                url: "/users",                  icon: Users },
   vendors:          { title: "Vendor",               url: "/vendors",                icon: Building2 },
-  suppliers:        { title: "Supplier",             url: "/suppliers",              icon: Truck },
   customers:        { title: "Customer",             url: "/customers",              icon: UserCheck },
   warehouses:       { title: "Warehouse",            url: "/warehouses",             icon: Warehouse },
   outbound:         { title: "Outbound Orders",      url: "/outbound",               icon: PackageOpen },
@@ -62,7 +61,6 @@ const roleModules = {
     "qualityCheck",
     "scanner",
     "vendors",
-    "suppliers",
     "customers",
     "inventory",
     "products",
@@ -85,7 +83,7 @@ const roleModules = {
   ],
   // Operational managers
   manager: [
-    "dashboard", "purchaseRequests", "asn", "outbound", "rejections", "vendors", "suppliers", "customers", "products", "inventory"
+    "dashboard", "purchaseRequests", "asn", "outbound", "rejections", "vendors", "customers", "products", "inventory"
   ],
   // Warehouse supervisor
   supervisor: [
@@ -104,7 +102,7 @@ const roleModules = {
   ],
   // Inventory manager
   inventory_manager: [
-    "dashboard", "vendors", "suppliers", "scanner", "inventory", "products", "warehouses",
+    "dashboard", "vendors", "scanner", "inventory", "products", "warehouses",
     "stockApprovals", "outbound"
   ],
   // Sales manager

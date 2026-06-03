@@ -4,7 +4,6 @@ import { Loader2, Activity } from "lucide-react";
 import {
   listProducts,
   listPurchaseRequests,
-  listSuppliers,
   listVendors,
   listEmployees,
   listPurchaseOrders,
@@ -68,12 +67,11 @@ export default function DashboardPage() {
     setIsLoading(true);
     try {
       const [
-        productsRes, prsRes, suppliersRes, vendorsRes, employeesRes,
+        productsRes, prsRes, vendorsRes, employeesRes,
         posRes, asnRes, grnsRes, grnItemsRes, movementsRes, inventoryRes
       ] = await Promise.allSettled([
         listProducts(),
         listPurchaseRequests(),
-        listSuppliers(),
         listVendors(),
         listEmployees(),
         listPurchaseOrders(),
@@ -199,7 +197,7 @@ export default function DashboardPage() {
         totalProducts:  productList.length,
         pendingPRs:     prList.filter(pr => pr.status === "Pending" || pr.status === "Finance Pending").length,
         pendingQC:      grnItemsList.filter(i => i.qc_status === "Pending").length,
-        totalSuppliers: toArray(getValue(suppliersRes)).length,
+        totalSuppliers: 0,
         totalVendors:   toArray(getValue(vendorsRes), "vendors").length,
         totalEmployees: toArray(getValue(employeesRes)).length,
         totalInventory,

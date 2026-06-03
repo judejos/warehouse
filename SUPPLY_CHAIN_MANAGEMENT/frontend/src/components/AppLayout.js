@@ -67,7 +67,6 @@ export function AppLayout() {
     if (p.includes("asn/create"))        return "Create ASN";
     if (p.includes("asn"))               return "ASN";
     if (p.includes("grn"))               return "GRN";
-    if (p.includes("suppliers"))         return "Suppliers";
     if (p.includes("vendors"))           return "Vendors";
     if (p.includes("warehouses"))        return "Warehouses";
     if (p.includes("outbound"))          return "Outbound Orders";

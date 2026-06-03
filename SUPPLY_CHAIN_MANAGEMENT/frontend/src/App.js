@@ -16,8 +16,6 @@ import InventoryPage      from "./pages/InventoryPage";
 import PurchaseRequestsPage from "./pages/PurchaseRequestsPage";
 import ASNPage            from "./pages/ASNPage";
 import GRNPage            from "./pages/GRNPage";
-import SuppliersPage      from "./pages/SuppliersPage";
-import AddSupplierPage    from "./pages/AddSupplierPage";
 import CustomersPage      from "./pages/CustomersPage";
 import AddCustomerPage    from "./pages/AddCustomerPage";
 import WarehousesPage     from "./pages/WarehousesPage";
@@ -109,11 +107,6 @@ const App = () => (
               <Route path="/vendors/create"  element={<RoleGuard allowedRoles={["admin","inventory_manager","manager"]}><CreateVendorPage /></RoleGuard>} />
               <Route path="/vendors/edit/:id" element={<RoleGuard allowedRoles={["admin","inventory_manager","manager"]}><CreateVendorPage /></RoleGuard>} />
               <Route path="/vendors/:vendorId/upload-agreement" element={<RoleGuard allowedRoles={["admin","inventory_manager","manager"]}><UploadAgreementPage /></RoleGuard>} />
-
-              {/* ── Suppliers (admin + inventory_manager + manager) ── */}
-              <Route path="/suppliers"        element={<RoleGuard allowedRoles={["admin","inventory_manager","manager"]}><SuppliersPage /></RoleGuard>} />
-              <Route path="/suppliers/create" element={<RoleGuard allowedRoles={["admin","inventory_manager","manager"]}><AddSupplierPage /></RoleGuard>} />
-
               {/* ── Customers (admin + sales_manager + manager) ── */}
               <Route path="/customers"        element={<RoleGuard allowedRoles={["admin","sales_manager","manager"]}><CustomersPage /></RoleGuard>} />
               <Route path="/customers/create" element={<RoleGuard allowedRoles={["admin","sales_manager","manager"]}><AddCustomerPage /></RoleGuard>} />

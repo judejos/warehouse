@@ -20,9 +20,6 @@ urlpatterns = [
     # Vendor APIs
     path('api/vendors/', include('vendors.urls')),
 
-    # Supplier APIs
-    path('api/suppliers/', include('supplier.urls')),
-
     # Product APIs
     path('api/products/', include('products.urls')),
 

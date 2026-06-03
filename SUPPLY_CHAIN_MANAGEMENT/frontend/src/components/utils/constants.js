@@ -60,35 +60,30 @@ export const ROLE_PERMISSIONS = {
     canManageInventory: true,
     canViewReports: true,
     canManageVendors: false,
-    canManageSuppliers: false,
     canManageUsers: false
   },
   [ROLES.QUALITY_ASSISTANT]: {
     canManageInventory: false,
     canViewReports: true,
     canManageVendors: false,
-    canManageSuppliers: false,
     canManageUsers: false
   },
   [ROLES.MANAGER]: {
     canManageInventory: true,
     canViewReports: true,
     canManageVendors: true,
-    canManageSuppliers: true,
     canManageUsers: false
   },
   [ROLES.SUPERVISOR]: {
     canManageInventory: true,
     canViewReports: true,
     canManageVendors: false,
-    canManageSuppliers: false,
     canManageUsers: false
   },
   [ROLES.ADMIN]: {
     canManageInventory: true,
     canViewReports: true,
     canManageVendors: true,
-    canManageSuppliers: true,
     canManageUsers: true
   }
 };

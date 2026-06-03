@@ -34,7 +34,6 @@ import {
   getProduct,
   listCategories,
   createCategory,
-  listSuppliers,
   listVendors,
 } from "../services/apiService";
 
@@ -90,7 +89,6 @@ const EMPTY_FORM = {
   unit_price: "",
   re_order: "",
   vendor_id: "",
-  supplier_id: "",
   ABC: "A",
   VED: "V",
   XYZ: "X",
@@ -233,7 +231,6 @@ export default function CreateEditProductPage() {
   const isEdit = Boolean(id);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
-  const [suppliers, setSuppliers] = useState([]);
   const [vendors, setVendors] = useState([]);
   const [categories, setCategories] = useState([]);
   const [isLoading, setIsLoading] = useState(isEdit);
@@ -245,8 +242,7 @@ export default function CreateEditProductPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [sRes, vRes, cRes] = await Promise.allSettled([listSuppliers(), listVendors(), listCategories()]);
-        setSuppliers(sRes.status === "fulfilled" ? toArray(sRes.value, "suppliers") : []);
+        const [vRes, cRes] = await Promise.allSettled([listVendors(), listCategories()]);
         setVendors(vRes.status === "fulfilled" ? toArray(vRes.value, "vendors") : []);
         setCategories(cRes.status === "fulfilled" ? toArray(cRes.value).map((cat) => cat.name) : []);
       } catch (e) {
@@ -267,7 +263,6 @@ export default function CreateEditProductPage() {
       unit_price:   product.unit_price   ?? "",
       re_order:     product.re_order     ?? "",
       vendor_id:    String(product.vendor?.vendor_id     ?? product.vendor_id     ?? ""),
-      supplier_id:  String(product.supplier?.supplier_id ?? product.supplier_id   ?? ""),
       ABC: product.ABC || "A",
       VED: product.VED || "V",
       XYZ: product.XYZ || "X",
@@ -537,24 +532,6 @@ export default function CreateEditProductPage() {
           <div className="col-span-2">
             <Section icon={Truck} title="Supply Chain">
               <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">Supplier</Label>
-                  <Select
-                    value={formData.supplier_id}
-                    onValueChange={(v) => set("supplier_id", v)}
-                  >
-                    <SelectTrigger className="border-gray-200 h-9 text-sm">
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suppliers.map((s) => (
-                        <SelectItem key={s.supplier_id} value={String(s.supplier_id)}>
-                          {s.supplier_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-gray-700">Vendor</Label>
                   <Select

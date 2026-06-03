@@ -167,29 +167,6 @@ export const updateEmployee = (employeeId, data) =>
 export const deleteEmployee = (employeeId) =>
   apiRequest(`/auth/delete-user/${employeeId}/`, 'DELETE');
 
-/* ================= SUPPLIER ================= */
-
-export const createSupplier = (data) =>
-  apiRequest('/suppliers/create/', 'POST', data);
-
-export const listSuppliers = () =>
-  apiRequest('/suppliers/list/', 'GET');
-
-export const getSupplier = (id) =>
-  apiRequest(`/suppliers/${id}/`, 'GET');
-
-export const updateSupplier = (id, data) =>
-  apiRequest(`/suppliers/update/${id}/`, 'PUT', data);
-
-export const deleteSupplier = (id) =>
-  apiRequest(`/suppliers/delete/${id}/`, 'DELETE');
-
-export const restoreSupplier = (id) =>
-  apiRequest(`/suppliers/restore/${id}/`, 'PUT');
-
-export const listInactiveSuppliers = () =>
-  apiRequest('/suppliers/inactive/', 'GET');
-
 /* ================= VENDOR ================= */
 
 export const createVendor = (data) =>
