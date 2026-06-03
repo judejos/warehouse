@@ -42,14 +42,14 @@ const STATUS_COLOR = {
 
 const Pill = ({ status }) => (
   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_COLOR[status] || "bg-gray-100 text-gray-700 border-gray-300"}`}>
-    {status}
+    {status === "Payment Pending" ? "Finance Review" : status}
   </span>
 );
 
 function RecordPaymentDialog({ so, onClose, onRecorded }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  const [paymentType, setPaymentType] = useState("full");
+  const [paymentType, setPaymentType] = useState("");
   const [amountReceived, setAmountReceived] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
 
@@ -58,12 +58,24 @@ function RecordPaymentDialog({ so, onClose, onRecorded }) {
   const balanceDue = (totalAmount - received).toFixed(2);
 
   const handleSubmit = async () => {
+    if (!paymentType) {
+      toast({ title: "Validation Error", description: "Please select a payment type.", variant: "destructive" });
+      return;
+    }
     if (!amountReceived || received <= 0) {
       toast({ title: "Validation Error", description: "Enter the amount received.", variant: "destructive" });
       return;
     }
     if (received > totalAmount) {
       toast({ title: "Validation Error", description: "Amount cannot exceed total order value.", variant: "destructive" });
+      return;
+    }
+    if (paymentType === "full" && Math.abs(received - totalAmount) > 0.01) {
+      toast({ title: "Validation Error", description: "Full payment must be exactly equal to the total order amount.", variant: "destructive" });
+      return;
+    }
+    if (paymentType === "advance" && received >= totalAmount - 0.01) {
+      toast({ title: "Validation Error", description: "Advance payment must be less than the total order amount.", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -103,7 +115,14 @@ function RecordPaymentDialog({ so, onClose, onRecorded }) {
               {[["full", "Full Payment", "💰"], ["advance", "Advance Payment", "💳"]].map(([val, label, icon]) => (
                 <button
                   key={val}
-                  onClick={() => { setPaymentType(val); if (val === "full") setAmountReceived(String(totalAmount)); }}
+                  onClick={() => { 
+                    setPaymentType(val); 
+                    if (val === "full") {
+                      setAmountReceived(String(totalAmount)); 
+                    } else {
+                      setAmountReceived("");
+                    }
+                  }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 text-sm font-semibold transition-all ${paymentType === val ? "border-[#1E3A8A] bg-blue-50 text-[#1E3A8A]" : "border-gray-200 text-gray-600 hover:border-gray-300"}`}
                 >
                   {icon} {label}
