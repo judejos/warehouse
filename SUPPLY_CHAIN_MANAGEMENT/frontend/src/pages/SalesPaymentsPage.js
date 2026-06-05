@@ -267,23 +267,24 @@ export default function SalesPaymentsPage() {
   const { toast } = useToast();
   const [sos, setSOss] = useState([]);
   const [loadingSO, setLoadingSO] = useState(true);
-  const [recordPaymentFor, setRecordPaymentFor] = useState(null);
-  const [recordBalanceFor, setRecordBalanceFor] = useState(null);
 
   const loadSOs = useCallback(async () => {
     setLoadingSO(true);
-    try { setSOss(toArr(await apiRequest("/sales/so/", "GET"))); }
-    catch { /* silent */ } finally { setLoadingSO(false); }
+    try {
+      setSOss(toArr(await apiRequest("/sales/so/", "GET")));
+    } catch {
+      /* silent */
+    } finally {
+      setLoadingSO(false);
+    }
   }, []);
 
-  useEffect(() => { loadSOs(); }, [loadSOs]);
+  useEffect(() => {
+    loadSOs();
+  }, [loadSOs]);
 
-  const pendingPaymentSOs = sos.filter(s => s.status === "Supervisor Approved");
-  const paymentSOs        = sos.filter(s => ["Payment Pending", "Finance Confirmed", "Pick & Pack", "Dispatched"].includes(s.status));
-  const pendingBalanceSOs = sos.filter(s => 
-    s.status === "Dispatched" && 
-    s.payment_info && 
-    parseFloat(s.payment_info.balance_due) > 0
+  const paymentSOs = sos.filter(s =>
+    ["Payment Pending", "Finance Confirmed", "Pick & Pack", "Dispatched"].includes(s.status)
   );
 
   return (
@@ -291,239 +292,118 @@ export default function SalesPaymentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <CreditCard className="w-6 h-6 text-[#1E3A8A]" /> Payments
+            <CreditCard className="w-6 h-6 text-[#1E3A8A]" /> Payments Ledger
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Record and track all customer payments</p>
+          <p className="text-sm text-gray-500 mt-0.5">Track and view payment statuses of customer orders</p>
         </div>
         <Button size="sm" variant="outline" className="h-9 text-xs" onClick={loadSOs}>
           <RefreshCw className="w-3 h-3 mr-1" /> Refresh
         </Button>
       </div>
 
-      <Tabs defaultValue="initial" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="initial" className="flex items-center gap-2">
-            Initial Payments
-            {pendingPaymentSOs.length > 0 && (
-              <span className="bg-purple-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1">{pendingPaymentSOs.length}</span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="balance" className="flex items-center gap-2">
-            Pending Balances
-            {pendingBalanceSOs.length > 0 && (
-              <span className="bg-amber-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1">{pendingBalanceSOs.length}</span>
-            )}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="initial" className="space-y-4">
-          {/* Awaiting Payment Recording */}
-          {pendingPaymentSOs.length > 0 && (
-            <Card className="shadow-sm overflow-hidden border-purple-200">
-              <div className="px-4 py-3 border-b bg-purple-50 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-purple-700" />
-                <p className="text-xs font-semibold text-purple-800 uppercase tracking-wide">Awaiting Payment Recording</p>
-                <span className="bg-purple-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingPaymentSOs.length}</span>
-              </div>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-purple-50/50">
-                      <TableHead className="text-xs font-semibold">SO ID</TableHead>
-                      <TableHead className="text-xs font-semibold">Customer</TableHead>
-                      <TableHead className="text-xs font-semibold">Product</TableHead>
-                      <TableHead className="text-xs font-semibold text-right">Total (₹)</TableHead>
-                      <TableHead className="text-xs font-semibold">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingPaymentSOs.map(s => (
-                      <TableRow key={s.so_id} className="hover:bg-purple-50/40">
-                        <TableCell className="text-xs font-mono font-bold text-purple-700">{s.so_id}</TableCell>
-                        <TableCell className="text-xs font-semibold">{s.customer_name}</TableCell>
-                        <TableCell className="text-xs">{s.product_name}</TableCell>
-                        <TableCell className="text-xs text-right font-bold">₹{parseFloat(s.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</TableCell>
-                        <TableCell>
-                          <Button size="sm" className="h-7 text-xs bg-purple-600 hover:bg-purple-700" onClick={() => setRecordPaymentFor(s)}>
-                            <CreditCard className="w-3 h-3 mr-1" /> Record Payment
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </Card>
-          )}
-
-          {/* Payment History */}
-          <Card className="border border-slate-200/80 shadow-sm overflow-hidden rounded-xl bg-white">
-            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-1.5 bg-blue-50 text-blue-700 rounded-lg">
-                  <DollarSign className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-800">Payment History</h3>
-                  <p className="text-xs text-slate-500">Overview of all orders and their financial/fulfillment statuses</p>
-                </div>
-              </div>
+      <Card className="border border-slate-200/80 shadow-sm overflow-hidden rounded-xl bg-white">
+        <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-blue-50 text-blue-700 rounded-lg">
+              <DollarSign className="w-4 h-4" />
             </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/75 hover:bg-slate-50/75 border-b border-slate-100">
-                    <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">SO ID</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Customer</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Product</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5 text-right">Total Amount</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Fulfillment Status</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Payment Details</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadingSO ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-12 text-center">
-                        <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
-                        <span className="text-xs text-slate-400 mt-2 block">Loading payment history...</span>
-                      </TableCell>
-                    </TableRow>
-                  ) : paymentSOs.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="py-12 text-center text-sm text-slate-400">
-                        No payment records yet.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paymentSOs.map(s => (
-                      <TableRow key={s.so_id} className="hover:bg-slate-50/50 border-b border-slate-100/80 transition-colors">
-                        <TableCell className="px-5 py-4">
-                          <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50/60 px-2 py-1 rounded-md border border-blue-100/50">
-                            {s.so_id}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-5 py-4">
-                          <div className="font-medium text-slate-800 text-xs">{s.customer_name}</div>
-                        </TableCell>
-                        <TableCell className="px-5 py-4 max-w-[240px] truncate">
-                          <span className="text-slate-600 text-xs" title={s.product_name}>
-                            {s.product_name}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-5 py-4 text-right">
-                          <span className="text-xs font-bold text-slate-900">
-                            ₹{parseFloat(s.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                          </span>
-                        </TableCell>
-                        <TableCell className="px-5 py-4">
-                          <Pill status={s.status} so={s} />
-                        </TableCell>
-                        <TableCell className="px-5 py-4">
-                          {s.payment_info ? (
-                            <div className="inline-flex flex-col gap-1.5 p-2 rounded-lg bg-slate-50 border border-slate-100 min-w-[150px]">
-                              <div className="flex items-center justify-between gap-2 border-b border-slate-200/60 pb-1">
-                                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                                  s.payment_info.payment_type === "full" 
-                                    ? "bg-blue-100/80 text-blue-700" 
-                                    : "bg-amber-100/80 text-amber-700"
-                                }`}>
-                                  {s.payment_info.payment_type}
-                                </span>
-                                {s.payment_info.finance_confirmed && (
-                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1 py-0.25 rounded">
-                                    ✓ Finance OK
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[10px] space-y-0.5 text-slate-600">
-                                <div className="flex justify-between">
-                                  <span>Received:</span>
-                                  <span className="font-semibold text-slate-800">₹{parseFloat(s.payment_info.amount_received || 0).toLocaleString("en-IN")}</span>
-                                </div>
-                                {parseFloat(s.payment_info.balance_due) > 0 && (
-                                  <div className="flex justify-between text-amber-600 font-semibold border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
-                                    <span>Balance:</span>
-                                    <span>₹{parseFloat(s.payment_info.balance_due).toLocaleString("en-IN")}</span>
-                                  </div>
-                                )}
-                              </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">Order Payment History</h3>
+              <p className="text-xs text-slate-500">Overview of all orders and their financial/fulfillment statuses</p>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-50/75 hover:bg-slate-50/75 border-b border-slate-100">
+                <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">SO ID</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Customer</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Product</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5 text-right">Total Amount</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Fulfillment Status</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600 px-5 py-3.5">Payment Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loadingSO ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-12 text-center">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
+                    <span className="text-xs text-slate-400 mt-2 block">Loading payment history...</span>
+                  </TableCell>
+                </TableRow>
+              ) : paymentSOs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-12 text-center text-sm text-slate-400">
+                    No payment records yet.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                paymentSOs.map(s => (
+                  <TableRow key={s.so_id} className="hover:bg-slate-50/50 border-b border-slate-100/80 transition-colors">
+                    <TableCell className="px-5 py-4">
+                      <span className="text-xs font-mono font-bold text-blue-700 bg-blue-50/60 px-2 py-1 rounded-md border border-blue-100/50">
+                        {s.so_id}
+                      </span>
+                    </TableCell>
+                    <TableCell className="px-5 py-4">
+                      <div className="font-medium text-slate-800 text-xs">{s.customer_name}</div>
+                    </TableCell>
+                    <TableCell className="px-5 py-4 max-w-[240px] truncate">
+                      <span className="text-slate-600 text-xs" title={s.product_name}>
+                        {s.product_name}
+                      </span>
+                    </TableCell>
+                    <TableCell className="px-5 py-4 text-right">
+                      <span className="text-xs font-bold text-slate-900">
+                        ₹{parseFloat(s.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </span>
+                    </TableCell>
+                    <TableCell className="px-5 py-4">
+                      <Pill status={s.status} so={s} />
+                    </TableCell>
+                    <TableCell className="px-5 py-4">
+                      {s.payment_info ? (
+                        <div className="inline-flex flex-col gap-1.5 p-2 rounded-lg bg-slate-50 border border-slate-100 min-w-[150px]">
+                          <div className="flex items-center justify-between gap-2 border-b border-slate-200/60 pb-1">
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                              s.payment_info.payment_type === "full" 
+                                ? "bg-blue-100/80 text-blue-700" 
+                                : "bg-amber-100/80 text-amber-700"
+                            }`}>
+                              {s.payment_info.payment_type}
+                            </span>
+                            {s.payment_info.finance_confirmed && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-1 py-0.25 rounded">
+                                ✓ Finance OK
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] space-y-0.5 text-slate-600">
+                            <div className="flex justify-between">
+                              <span>Received:</span>
+                              <span className="font-semibold text-slate-800">₹{parseFloat(s.payment_info.amount_received || 0).toLocaleString("en-IN")}</span>
                             </div>
-                          ) : (
-                            <span className="text-slate-400 text-xs">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="balance" className="space-y-4">
-          <Card className="shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b bg-amber-50 flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-amber-700" />
-              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Awaiting Balance Payment</p>
-              <span className="bg-amber-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingBalanceSOs.length}</span>
-            </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-amber-50/50">
-                    <TableHead className="text-xs font-semibold">SO ID</TableHead>
-                    <TableHead className="text-xs font-semibold">Customer</TableHead>
-                    <TableHead className="text-xs font-semibold">Product</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Total (₹)</TableHead>
-                    <TableHead className="text-xs font-semibold text-right">Paid (₹)</TableHead>
-                    <TableHead className="text-xs font-semibold text-right text-amber-700">Balance (₹)</TableHead>
-                    <TableHead className="text-xs font-semibold text-center">Action</TableHead>
+                            {parseFloat(s.payment_info.balance_due) > 0 && (
+                              <div className="flex justify-between text-amber-600 font-semibold border-t border-dashed border-slate-200 pt-0.5 mt-0.5">
+                                <span>Balance:</span>
+                                <span>₹{parseFloat(s.payment_info.balance_due).toLocaleString("en-IN")}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-xs">—</span>
+                      )}
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadingSO ? (
-                    <TableRow><TableCell colSpan={7} className="py-10 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-gray-400" /></TableCell></TableRow>
-                  ) : pendingBalanceSOs.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-gray-400">No pending balance payments.</TableCell></TableRow>
-                  ) : pendingBalanceSOs.map(s => (
-                    <TableRow key={s.so_id} className="hover:bg-amber-50/40">
-                      <TableCell className="text-xs font-mono font-bold text-[#1E3A8A]">{s.so_id}</TableCell>
-                      <TableCell className="text-xs font-semibold">{s.customer_name}</TableCell>
-                      <TableCell className="text-xs">{s.product_name}</TableCell>
-                      <TableCell className="text-xs text-right">₹{parseFloat(s.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-xs text-right text-emerald-600 font-semibold">₹{parseFloat(s.payment_info?.amount_received || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-xs text-right font-bold text-amber-700">₹{parseFloat(s.payment_info?.balance_due || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</TableCell>
-                      <TableCell className="text-center">
-                        <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700" onClick={() => setRecordBalanceFor(s)}>
-                          <CreditCard className="w-3 h-3 mr-1" /> Record Balance
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {recordPaymentFor && (
-        <RecordPaymentDialog
-          so={recordPaymentFor}
-          onClose={() => setRecordPaymentFor(null)}
-          onRecorded={() => { loadSOs(); setRecordPaymentFor(null); }}
-        />
-      )}
-      
-      {recordBalanceFor && (
-        <RecordBalancePaymentDialog
-          so={recordBalanceFor}
-          onClose={() => setRecordBalanceFor(null)}
-          onRecorded={() => { loadSOs(); setRecordBalanceFor(null); }}
-        />
-      )}
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
     </div>
   );
 }

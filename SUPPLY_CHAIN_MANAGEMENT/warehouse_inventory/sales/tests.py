@@ -5,6 +5,8 @@ from rest_framework.test import APITestCase, APIClient
 from rbac.models import Role, UserRole
 from products.models import Product
 from sales.models import CustomerPurchaseRequest, SalesOrder, SOPayment
+from vendors.models import Vendor
+from Inventory.models import Zone, Rack, Bin, Batch, Inventory
 
 User = get_user_model()
 
@@ -60,6 +62,30 @@ class SalesWorkflowTestCase(APITestCase):
             barcode="888888888",
             conversion_factor=1,
             carton_price=100.0,
+        )
+
+        # 4. Create Stock for Dispatch test
+        self.vendor = Vendor.objects.create(vendor_name="Test Vendor")
+        self.zone = Zone.objects.create(zone_id="Z1", zone_type="Dry")
+        self.rack = Rack.objects.create(
+            rack_id="R1",
+            zone=self.zone,
+            distance_from_dispatch=5.0,
+            shelf_count=3,
+            bin_count_per_shelf=5
+        )
+        self.bin_obj = Bin.objects.filter(shelf__rack=self.rack).first()
+        self.batch = Batch.objects.create(
+            vendor=self.vendor,
+            product=self.product,
+            batch_number="BAT-JUICE"
+        )
+        self.inventory_row = Inventory.objects.create(
+            product=self.product,
+            vendor=self.vendor,
+            batch=self.batch,
+            bin=self.bin_obj,
+            quantity=100
         )
 
         # Clients for specific users
@@ -163,29 +189,19 @@ class SalesWorkflowTestCase(APITestCase):
         response = self.qual_asst_client.post(f"/api/sales/so/{so_id}/payment/", payment_data)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Sales Manager can record payment
+        # Sales Manager cannot record payment anymore
         response = self.sales_mgr_client.post(f"/api/sales/so/{so_id}/payment/", payment_data)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(float(response.data["balance_due"]), 4000.00)
-        self.assertEqual(response.data["finance_confirmed"], False)
-
-        # SO status should be Payment Pending now
-        so = SalesOrder.objects.get(so_id=so_id)
-        self.assertEqual(so.status, "Payment Pending")
-
-        # --- Step 6: Finance Director Confirm Payment ---
-        confirm_data = {
-            "finance_notes": "NEFT transaction cleared in bank"
-        }
-
-        # Sales manager cannot confirm payment
-        response = self.sales_mgr_client.patch(f"/api/sales/so/{so_id}/finance-confirm/", confirm_data)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-        # Finance Director can confirm payment
-        response = self.fin_dir_client.patch(f"/api/sales/so/{so_id}/finance-confirm/", confirm_data)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["status"], "Finance Confirmed")
+        # Finance Director can record payment
+        response = self.fin_dir_client.post(f"/api/sales/so/{so_id}/payment/", payment_data)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(float(response.data["balance_due"]), 4000.00)
+        self.assertEqual(response.data["finance_confirmed"], True)
+
+        # SO status should be Finance Confirmed now
+        so = SalesOrder.objects.get(so_id=so_id)
+        self.assertEqual(so.status, "Finance Confirmed")
 
         # --- Step 7: Pick & Pack / Dispatch by Inventory Manager ---
         # Quality assistant cannot start Pick & Pack

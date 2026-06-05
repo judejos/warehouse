@@ -255,7 +255,7 @@ class SOListCreateView(APIView):
         elif role == "inventory_manager":
             qs = qs.filter(status__in=["Finance Confirmed", "Pick & Pack", "Dispatched"])
         elif role == "finance_director":
-            qs = qs.filter(status="Payment Pending")
+            qs = qs.filter(status__in=["Supervisor Approved", "Payment Pending", "Finance Confirmed", "Pick & Pack", "Dispatched"])
 
         serializer = SalesOrderSerializer(qs, many=True)
         return Response(serializer.data)
@@ -347,22 +347,47 @@ class SOSupervisorActionView(APIView):
                 f"Supervisor approved Sales Order {so.so_id} for customer '{so.cpr.customer_name}'. "
                 f"Please record the payment received from the customer."
             )
+            
+            # 1. Notify Finance Director to record payment
+            send_notification(
+                sender=request.user,
+                sender_role="supervisor",
+                recipient_role="finance_director",
+                ntype="payment",
+                title=f"SO {so.so_id} Approved — Awaiting Payment Recording",
+                message=(
+                    f"Supervisor approved Sales Order {so.so_id} for customer '{so.cpr.customer_name}'. "
+                    f"Please record the payment received from the customer (Total: ₹{so.total_amount})."
+                ),
+                url="/sales-finance",
+            )
+            
+            # 2. Notify Sales Manager for informational purposes
+            send_notification(
+                sender=request.user,
+                sender_role="supervisor",
+                recipient_role="sales_manager",
+                ntype="approval",
+                title=notif_title,
+                message=f"Supervisor approved Sales Order {so.so_id} for customer '{so.cpr.customer_name}'. Finance Director has been notified to record payment.",
+                url="/sales",
+            )
         else:
             so.status = "Supervisor Rejected"
             notif_title = f"SO {so.so_id} Rejected by Supervisor ❌"
             notif_msg   = f"Supervisor rejected SO {so.so_id}. Reason: {notes or 'No reason provided.'}"
+            
+            send_notification(
+                sender=request.user,
+                sender_role="supervisor",
+                recipient_role="sales_manager",
+                ntype="approval",
+                title=notif_title,
+                message=notif_msg,
+                url="/sales",
+            )
 
         so.save()
-
-        send_notification(
-            sender=request.user,
-            sender_role="supervisor",
-            recipient_role="sales_manager",
-            ntype="approval",
-            title=notif_title,
-            message=notif_msg,
-            url="/sales",
-        )
 
         return Response(SalesOrderSerializer(so).data)
 
@@ -376,8 +401,8 @@ class SOPaymentView(APIView):
 
     def post(self, request, so_id):
         role = get_role(request)
-        if role not in ("admin", "sales_manager"):
-            return Response({"error": "Only Sales Managers can record payments."}, status=status.HTTP_403_FORBIDDEN)
+        if role not in ("admin", "finance_director"):
+            return Response({"error": "Only Finance Directors can record payments."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             so = SalesOrder.objects.select_related("cpr", "product").get(so_id=so_id)
@@ -398,24 +423,41 @@ class SOPaymentView(APIView):
 
         serializer = SOPaymentSerializer(data=data)
         if serializer.is_valid():
-            payment = serializer.save(recorded_by=request.user)
-            # Move SO to Payment Pending
-            so.status = "Payment Pending"
+            payment = serializer.save(
+                recorded_by=request.user,
+                finance_confirmed=True,
+                finance_confirmed_by=request.user,
+                confirmed_at=timezone.now()
+            )
+            # Move SO directly to Finance Confirmed
+            so.status = "Finance Confirmed"
             so.save()
 
+            # Notify sales manager and inventory manager
             send_notification(
                 sender=request.user,
-                sender_role="sales_manager",
-                recipient_role="finance_director",
+                sender_role="finance_director",
+                recipient_role="sales_manager",
                 ntype="payment",
-                title=f"Payment Received — SO {so.so_id} Awaiting Finance Confirmation",
+                title=f"SO {so.so_id} — Finance Confirmed ✅",
                 message=(
-                    f"Payment of ₹{payment.amount_received} ({payment.payment_type}) received for "
-                    f"SO {so.so_id} from customer '{so.cpr.customer_name}'. "
-                    f"Total Order: ₹{so.total_amount}, Balance Due: ₹{payment.balance_due}. "
-                    f"Please review and confirm."
+                    f"Finance Director recorded and confirmed payment of ₹{payment.amount_received} ({payment.payment_type}) "
+                    f"for SO {so.so_id}. The order is now finalised."
                 ),
-                url="/sales-finance",
+                url="/sales",
+            )
+            send_notification(
+                sender=request.user,
+                sender_role="finance_director",
+                recipient_role="inventory_manager",
+                ntype="task",
+                title=f"SO {so.so_id} — Ready for Pick & Pack 📦",
+                message=(
+                    f"Finance confirmed SO {so.so_id} for customer '{so.cpr.customer_name}'. "
+                    f"Please pick & pack {so.quantity} units of {so.product.product_name} "
+                    f"and mark the order as dispatched."
+                ),
+                url="/stock-check",
             )
             return Response(SOPaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -642,8 +684,8 @@ class SOBalancePaymentView(APIView):
 
     def post(self, request, so_id):
         role = get_role(request)
-        if role not in ("admin", "sales_manager"):
-            return Response({"error": "Only Sales Managers can record balance payments."}, status=status.HTTP_403_FORBIDDEN)
+        if role not in ("admin", "finance_director"):
+            return Response({"error": "Only Finance Directors can record balance payments."}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             so = SalesOrder.objects.select_related("payment").get(so_id=so_id)
@@ -684,18 +726,18 @@ class SOBalancePaymentView(APIView):
             
         payment.save()
 
-        # Send notification
+        # Send notification to sales manager
         send_notification(
             sender=request.user,
-            sender_role="sales_manager",
-            recipient_role="finance_director",
+            sender_role="finance_director",
+            recipient_role="sales_manager",
             ntype="payment",
-            title=f"Balance Payment Received — SO {so.so_id}",
+            title=f"Balance Payment Recorded — SO {so.so_id}",
             message=(
-                f"Balance payment of ₹{amount} received for SO {so.so_id}. "
+                f"Finance Director recorded a balance payment of ₹{amount} for SO {so.so_id}. "
                 f"Remaining Balance: ₹{payment.balance_due}."
             ),
-            url="/sales-finance/confirmed",
+            url="/sales",
         )
 
         return Response({"message": "Balance payment recorded successfully.", "balance_due": payment.balance_due})
