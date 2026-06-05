@@ -12,6 +12,10 @@ import {
   listGRNItems,
   listStockMovements,
   listInventoryRows,
+  listCustomers,
+  listCPRs,
+  listSalesOrders,
+  listSOPayments,
 } from "../services/apiService";
 
 // Role-specific Dashboards
@@ -21,6 +25,7 @@ import SupervisorDashboard from "./dashboards/SupervisorDashboard";
 import InventoryManagerDashboard from "./dashboards/InventoryManagerDashboard";
 import QualityAssistantDashboard from "./dashboards/QualityAssistantDashboard";
 import FinanceDirectorDashboard from "./dashboards/FinanceDirectorDashboard";
+import SalesManagerDashboard from "./dashboards/SalesManagerDashboard";
 
 // Normalise any API response shape to a plain array
 const toArray = (res, knownKey = null) => {
@@ -50,6 +55,13 @@ export default function DashboardPage() {
     rejectedToday: 0,
     pendingDispatch: 0,
     lowStock: 0,
+    // Sales Manager stats
+    totalCustomers: 0,
+    pendingCPRs: 0,
+    activeSalesOrders: 0,
+    pendingPayments: 0,
+    dispatchedOrders: 0,
+    totalSalesRevenue: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
@@ -57,6 +69,12 @@ export default function DashboardPage() {
   const [qcData, setQcData] = useState([]);
   const [inventoryInsights, setInventoryInsights] = useState({ lowStockItems: [], fastMoving: [] });
   const [outboundStats, setOutboundStats] = useState({ pending: 0, shippedToday: 0, delayed: 0 });
+  const [salesData, setSalesData] = useState({
+    recentCPRs: [],
+    recentSalesOrders: [],
+    salesPipeline: [],
+    recentPayments: [],
+  });
 
   useEffect(() => { 
     loadDashboardData(); 
@@ -68,7 +86,8 @@ export default function DashboardPage() {
     try {
       const [
         productsRes, prsRes, vendorsRes, employeesRes,
-        posRes, asnRes, grnsRes, grnItemsRes, movementsRes, inventoryRes
+        posRes, asnRes, grnsRes, grnItemsRes, movementsRes, inventoryRes,
+        customersRes, cprsRes, salesOrdersRes, paymentsRes
       ] = await Promise.allSettled([
         listProducts(),
         listPurchaseRequests(),
@@ -80,6 +99,10 @@ export default function DashboardPage() {
         listGRNItems(),
         listStockMovements(),
         listInventoryRows(),
+        listCustomers(),
+        listCPRs(true),
+        listSalesOrders(),
+        listSOPayments(true),
       ]);
 
       const getValue = (s) => (s.status === "fulfilled" ? s.value : null);
@@ -92,6 +115,10 @@ export default function DashboardPage() {
       const grnItemsData  = getValue(grnItemsRes);
       const movementsData = getValue(movementsRes);
       const inventoryData = getValue(inventoryRes);
+      const customersData     = getValue(customersRes);
+      const cprsData          = getValue(cprsRes);
+      const salesOrdersData   = getValue(salesOrdersRes);
+      const paymentsData      = getValue(paymentsRes);
 
       const productList  = toArray(productsData, "products");
       let prList       = toArray(prsData);
@@ -193,6 +220,24 @@ export default function DashboardPage() {
       
       const totalInventory = Object.values(stockMap).reduce((sum, qty) => sum + Math.max(0, qty), 0);
 
+      // ── Sales Manager metrics ──
+      const customerList    = toArray(customersData);
+      const cprList         = toArray(cprsData);
+      const salesOrderList  = toArray(salesOrdersData);
+      const paymentList     = toArray(paymentsData);
+
+      const pendingCPRs       = cprList.filter(c => c.status === "Pending" || c.status === "pending").length;
+      const activeSalesOrders = salesOrderList.filter(so =>
+        !["Dispatched", "Cancelled", "Completed"].includes(so.status)
+      ).length;
+      const dispatchedOrders  = salesOrderList.filter(so => so.status === "Dispatched").length;
+      const pendingPayments   = paymentList.filter(p =>
+        p.status === "Pending" || p.status === "Awaiting Confirmation"
+      ).length;
+      const totalSalesRevenue = paymentList
+        .filter(p => p.status === "Confirmed" || p.status === "confirmed")
+        .reduce((sum, p) => sum + parseFloat(p.amount || p.total_amount || 0), 0);
+
       setStats({
         totalProducts:  productList.length,
         pendingPRs:     prList.filter(pr => pr.status === "Pending" || pr.status === "Finance Pending").length,
@@ -207,6 +252,36 @@ export default function DashboardPage() {
         rejectedToday: rejectedToday.length,
         pendingReceipts: pendingReceipts.length,
         lowStock: lowStockItems.length,
+        // Sales Manager
+        totalCustomers: customerList.length,
+        pendingCPRs,
+        activeSalesOrders,
+        dispatchedOrders,
+        pendingPayments,
+        totalSalesRevenue,
+      });
+
+      // Build sales-specific state
+      const recentCPRs = cprList
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+      const recentSalesOrders = salesOrderList
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+      const recentPayments = paymentList
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+
+      setSalesData({
+        recentCPRs,
+        recentSalesOrders,
+        recentPayments,
+        salesPipeline: [
+          { label: "CPR",       count: cprList.length,                  color: "#6366F1" },
+          { label: "Sales Order", count: salesOrderList.length,          color: "#8B5CF6" },
+          { label: "Dispatched",  count: dispatchedOrders,               color: "#10B981" },
+          { label: "Paid",        count: paymentList.filter(p => p.status === "Confirmed" || p.status === "confirmed").length, color: "#F59E0B" },
+        ],
       });
 
       setTrackingFlow([
@@ -291,6 +366,8 @@ export default function DashboardPage() {
         return <QualityAssistantDashboard {...props} />;
       case "finance_director":
         return <FinanceDirectorDashboard {...props} />;
+      case "sales_manager":
+        return <SalesManagerDashboard stats={stats} salesData={salesData} inventoryInsights={inventoryInsights} isLoading={isLoading} />;
       default:
         return <ManagerDashboard {...props} />;
     }

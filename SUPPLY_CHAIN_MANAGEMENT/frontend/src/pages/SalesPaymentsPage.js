@@ -29,7 +29,7 @@ const toArr = (r) => {
 
 const STATUS_META = {
   "Finance Review":    { bg: "bg-purple-50",  text: "text-purple-700",  border: "border-purple-200",  dot: "bg-purple-500"  },
-  "Payment Pending":   { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200",   dot: "bg-amber-500"   },
+  "Balance Pending":   { bg: "bg-amber-50",   text: "text-amber-700",   border: "border-amber-200",   dot: "bg-amber-500"   },
   "Payment Completed": { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
   "Finance Confirmed": { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500" },
   "Pick & Pack":       { bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200",    dot: "bg-blue-500"    },
@@ -45,7 +45,7 @@ const Pill = ({ status, so }) => {
 
   if (so && so.status === "Finance Confirmed") {
     const hasBalance = so.payment_info && parseFloat(so.payment_info.balance_due) > 0;
-    displayStatus = hasBalance ? "Payment Pending" : "Payment Completed";
+    displayStatus = hasBalance ? "Balance Pending" : "Payment Completed";
   }
 
   const m = STATUS_META[displayStatus] || { bg: "bg-gray-50", text: "text-gray-600", border: "border-gray-200", dot: "bg-gray-400" };

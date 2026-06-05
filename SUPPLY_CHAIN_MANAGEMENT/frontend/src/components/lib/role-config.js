@@ -68,7 +68,7 @@ const roleModules = {
     "warehouses",
     "finance",
     "rejections",
-    "settings",
+    
     // Sales Manager workflow
     "purchaseRequestsSales",
     "salesOrders",
@@ -80,6 +80,7 @@ const roleModules = {
     // Sales Finance
     "awaitingConfirmation",
     "confirmedPayments",
+    "settings"
   ],
   // Operational managers
   manager: [

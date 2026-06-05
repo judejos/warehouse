@@ -51,7 +51,7 @@ function CreateCPRDialog({ onClose, onCreated }) {
   const [loadingCust, setLoadingCust] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    customer: "", // Will hold customer_id if selected from dropdown
+    customer: "",
     customer_name: "", customer_phone: "", customer_email: "",
     customer_address: "", customer_gstin: "",
     product: "", requested_quantity: "", unit_price: "", notes: "",
@@ -72,31 +72,37 @@ function CreateCPRDialog({ onClose, onCreated }) {
   const handleCustomerSelect = (e) => {
     const custId = e.target.value;
     const selected = customers.find(c => c.customer_id === custId);
-    
     if (selected) {
       setForm(f => ({
         ...f,
         customer: selected.customer_id,
-        customer_name: selected.company_name,
-        customer_phone: selected.phone,
+        customer_name: selected.company_name || "",
+        customer_phone: selected.phone || "",
         customer_email: selected.email || "",
         customer_address: selected.location || "",
         customer_gstin: selected.gstin || "",
       }));
     } else {
-      setForm(f => ({ ...f, customer: "" }));
+      setForm(f => ({
+        ...f,
+        customer: "",
+        customer_name: "", customer_phone: "", customer_email: "",
+        customer_address: "", customer_gstin: "",
+      }));
     }
   };
-
-
 
   const totalAmount = form.unit_price && form.requested_quantity
     ? (parseFloat(form.unit_price) * parseInt(form.requested_quantity)).toFixed(2)
     : "—";
 
   const handleSubmit = async () => {
-    if (!form.customer_name || !form.customer_phone || !form.product || !form.requested_quantity || !form.unit_price) {
-      toast({ title: "Validation Error", description: "Please fill all required fields.", variant: "destructive" });
+    if (!form.customer) {
+      toast({ title: "Validation Error", description: "Please select a customer.", variant: "destructive" });
+      return;
+    }
+    if (!form.product || !form.requested_quantity || !form.unit_price) {
+      toast({ title: "Validation Error", description: "Please fill all required order fields.", variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -123,27 +129,30 @@ function CreateCPRDialog({ onClose, onCreated }) {
           <DialogTitle className="flex items-center gap-2 text-[#1E3A8A]">
             <ShoppingCart className="w-5 h-5" /> Create Customer Purchase Request
           </DialogTitle>
-          <DialogDescription>Fill in customer and product details. The Inventory Manager will be notified to verify stock.</DialogDescription>
+          <DialogDescription>Select a customer — their details will be filled automatically. Then complete the order details below.</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-4 mt-2">
+
           <div className="col-span-2">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Customer Information</p>
           </div>
-          
-          <div className="col-span-2 grid gap-1.5 p-3 bg-slate-50 border rounded-lg mb-2">
+
+          <div className="col-span-2 grid gap-1.5 p-3 bg-slate-50 border rounded-lg">
             <Label className="text-xs text-[#1E3A8A] font-semibold flex items-center gap-1.5">
-              <UserCheck className="w-3.5 h-3.5" /> Select Existing Customer (Optional)
+              <UserCheck className="w-3.5 h-3.5" /> Select Customer *
             </Label>
             {loadingCust ? (
-               <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading customers…</div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading customers…
+              </div>
             ) : (
               <select
                 value={form.customer}
                 onChange={handleCustomerSelect}
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1E3A8A]"
               >
-                <option value="">— Or type customer details manually below —</option>
+                <option value="">— Select a customer —</option>
                 {customers.filter(c => c.status === "Active").map(c => (
                   <option key={c.customer_id} value={c.customer_id}>
                     {c.company_name} ({c.customer_id})
@@ -152,34 +161,55 @@ function CreateCPRDialog({ onClose, onCreated }) {
               </select>
             )}
           </div>
-          <div className="grid gap-1.5">
-            <Label className="text-xs">Customer Name *</Label>
-            <Input placeholder="Full name" value={form.customer_name} onChange={set("customer_name")} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-xs">Phone *</Label>
-            <Input placeholder="+91 XXXXX XXXXX" value={form.customer_phone} onChange={set("customer_phone")} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-xs">Email</Label>
-            <Input type="email" placeholder="customer@email.com" value={form.customer_email} onChange={set("customer_email")} />
-          </div>
-          <div className="grid gap-1.5">
-            <Label className="text-xs">GSTIN</Label>
-            <Input placeholder="15-digit GSTIN (optional)" value={form.customer_gstin} onChange={set("customer_gstin")} />
-          </div>
-          <div className="col-span-2 grid gap-1.5">
-            <Label className="text-xs">Address</Label>
-            <Input placeholder="Delivery address" value={form.customer_address} onChange={set("customer_address")} />
-          </div>
+
+          {form.customer ? (
+            <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Customer Details — Auto Filled
+              </p>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5">Name</p>
+                  <p className="font-semibold text-slate-800">{form.customer_name || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5">Phone</p>
+                  <p className="font-semibold text-slate-800">{form.customer_phone || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5">Email</p>
+                  <p className="font-semibold text-slate-800">{form.customer_email || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5">GSTIN</p>
+                  <p className="font-semibold text-slate-800">{form.customer_gstin || "—"}</p>
+                </div>
+                {form.customer_address && (
+                  <div className="col-span-2">
+                    <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide mb-0.5">Address</p>
+                    <p className="font-semibold text-slate-800">{form.customer_address}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="col-span-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 flex flex-col items-center text-center">
+              <UserCheck className="w-8 h-8 text-slate-300 mb-2" />
+              <p className="text-sm text-slate-400 font-medium">Select a customer above</p>
+              <p className="text-xs text-slate-300 mt-0.5">Their name, phone, email, GSTIN and address will appear here automatically.</p>
+            </div>
+          )}
 
           <div className="col-span-2 mt-2">
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Order Details</p>
           </div>
+
           <div className="col-span-2 grid gap-1.5">
             <Label className="text-xs">Product *</Label>
             {loadingProd ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+              </div>
             ) : (
               <select
                 value={form.product}
@@ -219,7 +249,7 @@ function CreateCPRDialog({ onClose, onCreated }) {
 
         <DialogFooter className="mt-4 gap-2">
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={saving} className="bg-[#1E3A8A] hover:bg-[#162d6e]">
+          <Button onClick={handleSubmit} disabled={saving || !form.customer} className="bg-[#1E3A8A] hover:bg-[#162d6e]">
             {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Creating…</> : <><Plus className="w-4 h-4 mr-2" />Create CPR</>}
           </Button>
         </DialogFooter>
