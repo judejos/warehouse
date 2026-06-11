@@ -101,6 +101,9 @@ function useScannerInput(onBarcode, paused) {
 
   useEffect(() => {
     const onKeyDown = (e) => {
+      // If paused (e.g. typing in a form input), don't intercept keys
+      if (paused) return;
+
       // ── Guard: ignore synthetic / extension events with no key ──
       if (!e || typeof e.key !== "string") return;
 
@@ -111,11 +114,11 @@ function useScannerInput(onBarcode, paused) {
       // ── Guard: nothing focused (e.g. iframe took focus) ──
       if (!focused) return;
 
+      // SELECT tags are not text-entry form elements, so we should not treat them as form input fields
       const isFormEl = (
         focused !== inputRef.current &&
         (focused.tagName === "INPUT" ||
-         focused.tagName === "TEXTAREA" ||
-         focused.tagName === "SELECT")
+         focused.tagName === "TEXTAREA")
       );
 
       // ── Guard: ensure buffer is always a string ──
@@ -169,7 +172,7 @@ function useScannerInput(onBarcode, paused) {
       window.removeEventListener("keydown", onKeyDown);
       clearTimeout(timer.current);
     };
-  }, [flush]);
+  }, [flush, paused]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -454,7 +457,14 @@ function AddItemsMode({ user }) {
         <Label className="text-xs font-semibold text-gray-600">Select Active GRN</Label>
         <select
           value={activeGRN?.grn_id || ""}
-          onChange={e => { const g = grns.find(x => x.grn_id === e.target.value); setActiveGRN(g || null); setScanResult(null); setAddedItems([]); setPaused(false); }}
+          onChange={e => {
+            const g = grns.find(x => x.grn_id === e.target.value);
+            setActiveGRN(g || null);
+            setScanResult(null);
+            setAddedItems([]);
+            setPaused(false);
+            setTimeout(() => inputRef.current?.focus(), 50);
+          }}
           className="flex h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <option value="">— Select GRN —</option>
@@ -578,6 +588,7 @@ function PutawayMode() {
   const [qtyOverrides, setQtyOverrides] = useState({});
   const [rowErrors, setRowErrors]       = useState({}); 
   const [globalError, setGlobalError]   = useState(""); // Error message for general scanning
+  const [paused, setPaused]             = useState(false);
 
   const handleBarcode = useCallback(async (barcode) => {
     setDecoding(true);
@@ -600,7 +611,7 @@ function PutawayMode() {
     }
   }, []);
 
-  const inputRef = useScannerInput(handleBarcode, false);
+  const inputRef = useScannerInput(handleBarcode, paused);
 
 
   const handleConfirm = async (plan) => {
@@ -829,6 +840,8 @@ function PutawayMode() {
                                   setQtyOverrides(q => ({ ...q, [plan.plan_id]: e.target.value }));
                                   setRowErrors(q => ({ ...q, [plan.plan_id]: null }));
                                 }}
+                                onFocus={() => setPaused(true)}
+                                onBlur={() => setPaused(false)}
                                 className="w-20 h-8 text-sm text-center border-gray-300"
                               />
                               <Button
