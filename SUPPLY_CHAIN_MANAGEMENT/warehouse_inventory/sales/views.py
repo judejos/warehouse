@@ -253,9 +253,9 @@ class SOListCreateView(APIView):
         if role == "supervisor":
             qs = qs.filter(status="Pending Supervisor")
         elif role == "inventory_manager":
-            qs = qs.filter(status__in=["Finance Confirmed", "Pick & Pack", "Dispatched"])
+            qs = qs.filter(status__in=["Finance Confirmed", "Pick & Pack", "Ready for Dispatch", "Dispatched"])
         elif role == "finance_director":
-            qs = qs.filter(status__in=["Supervisor Approved", "Payment Pending", "Finance Confirmed", "Pick & Pack", "Dispatched"])
+            qs = qs.filter(status__in=["Supervisor Approved", "Payment Pending", "Finance Confirmed", "Pick & Pack", "Ready for Dispatch", "Dispatched"])
 
         serializer = SalesOrderSerializer(qs, many=True)
         return Response(serializer.data)
@@ -546,11 +546,17 @@ class SODispatchView(APIView):
         except SalesOrder.DoesNotExist:
             return Response({"error": "Sales Order not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if so.status not in ("Finance Confirmed", "Pick & Pack"):
+        if so.status not in ("Finance Confirmed", "Pick & Pack", "Ready for Dispatch"):
             return Response(
-                {"error": f"SO must be 'Finance Confirmed' or 'Pick & Pack' to dispatch. Current: '{so.status}'."},
+                {"error": f"SO must be 'Finance Confirmed', 'Pick & Pack' or 'Ready for Dispatch' to dispatch. Current: '{so.status}'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        driver_name = request.data.get("driver_name", "").strip()
+        vehicle_number = request.data.get("vehicle_number", "").strip()
+
+        if not driver_name or not vehicle_number:
+            return Response({"error": "Driver details and Vehicle number are required to dispatch."}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             # Lock the inventory rows for this product
@@ -605,6 +611,8 @@ class SODispatchView(APIView):
 
                 remaining -= deduct
 
+            so.driver_name = driver_name
+            so.vehicle_number = vehicle_number
             so.status = "Dispatched"
             so.save()
 
@@ -645,7 +653,73 @@ class SOPickPackView(APIView):
             return Response({"error": f"SO must be 'Finance Confirmed' to start Pick & Pack. Current: '{so.status}'."}, status=status.HTTP_400_BAD_REQUEST)
 
         so.status = "Pick & Pack"
+        
+        # Generate barcode & barcode_image
+        try:
+            so_num = int(so.so_id[2:])
+        except ValueError:
+            so_num = 1
+        barcode_val = f"{so.so_id}-ITM-D{so_num:02d}"
+        so.barcode = barcode_val
+        
+        from Inventory.utils import _encode_barcode_to_base64
+        so.barcode_image = _encode_barcode_to_base64(barcode_val)
+        
         so.save()
+
+        return Response(SalesOrderSerializer(so).data)
+
+
+# ─────────────────────────────────────────────
+# SO — Print Logsheet (Inventory Manager)
+# ─────────────────────────────────────────────
+
+class SOPrintLogsheetView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, so_id):
+        role = get_role(request)
+        if role not in ("admin", "inventory_manager"):
+            return Response({"error": "Only Inventory Managers can mark logsheets as printed."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            so = SalesOrder.objects.select_related("cpr", "product").get(so_id=so_id)
+        except SalesOrder.DoesNotExist:
+            return Response({"error": "Sales Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if so.status != "Pick & Pack":
+            return Response(
+                {"error": f"SO must be 'Pick & Pack' to print logsheet. Current: '{so.status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        so.logsheet_printed = True
+        so.status = "Ready for Dispatch"
+        so.save()
+
+        return Response(SalesOrderSerializer(so).data)
+
+
+# ─────────────────────────────────────────────
+# SO — Decode Barcode (Inventory Manager)
+# ─────────────────────────────────────────────
+
+class SODecodeBarcodeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        role = get_role(request)
+        if role not in ("admin", "inventory_manager"):
+            return Response({"error": "Only Inventory Managers can decode order barcodes."}, status=status.HTTP_403_FORBIDDEN)
+
+        barcode_val = (request.data.get("barcode_value") or "").strip()
+        if not barcode_val:
+            return Response({"error": "barcode_value is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            so = SalesOrder.objects.select_related("cpr", "product", "payment").get(barcode=barcode_val)
+        except SalesOrder.DoesNotExist:
+            return Response({"error": f"Sales Order with barcode '{barcode_val}' not found."}, status=status.HTTP_404_NOT_FOUND)
 
         return Response(SalesOrderSerializer(so).data)
 

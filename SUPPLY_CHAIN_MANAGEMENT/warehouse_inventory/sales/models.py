@@ -141,6 +141,7 @@ class SalesOrder(models.Model):
         ("Payment Pending",     "Payment Pending — Awaiting Finance"),
         ("Finance Confirmed",   "Confirmed by Finance Director"),
         ("Pick & Pack",         "Pick & Pack in Progress"),
+        ("Ready for Dispatch",  "Ready for Dispatch"),
         ("Dispatched",          "Dispatched"),
     ]
 
@@ -158,6 +159,13 @@ class SalesOrder(models.Model):
     status             = models.CharField(
         max_length=25, choices=STATUS_CHOICES, default="Pending Supervisor"
     )
+
+    # Barcode & Delivery Info
+    barcode            = models.CharField(max_length=50, blank=True, default="")
+    barcode_image      = models.TextField(blank=True, default="", help_text="Base64 PNG of Code128 barcode")
+    driver_name        = models.CharField(max_length=150, blank=True, default="")
+    vehicle_number     = models.CharField(max_length=50, blank=True, default="")
+    logsheet_printed   = models.BooleanField(default=False)
 
     # Supervisor review
     supervisor_notes   = models.TextField(blank=True, default="")

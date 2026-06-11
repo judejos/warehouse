@@ -48,9 +48,10 @@ import { Label } from "../components/ui/label";
 import {
   ScanLine, CheckCircle, AlertTriangle, Loader2, RefreshCw,
   Package, MapPin, ChevronRight, Trash2, RotateCcw,
-  XCircle, Box, Printer,
+  XCircle, Box, Printer, Truck, User, DollarSign, ChevronDown,
 } from "lucide-react";
 import { useAuth } from "../components/lib/auth-context";
+import { useToast } from "../components/ui/use-toast";
 import {
   listGRNs,
   getGRNItems,
@@ -59,6 +60,9 @@ import {
   decodeGRNBarcode,
   confirmPutaway,
   reassignPutawayBin,
+  decodeSOBarcode,
+  dispatchSO,
+  listSalesOrders,
 } from "../services/apiService";
 
 /* ── helpers ──────────────────────────────────────────────────────────── */
@@ -75,37 +79,87 @@ const fmtD  = (d) => formatDateDDMMYYYY(d);
 const fmtDt = (d) => d ? new Date(d).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "—";
 
 /* ── USB HID scanner: global keydown → buffer → onBarcode ────────────── */
-const SCAN_DEBOUNCE_MS = 80;
-const MIN_BARCODE_LEN  = 3;
+/* USB barcode scanners send characters extremely fast (< 80 ms apart)    */
+/* We track inter-key timing so we can intercept scanner input even when   */
+/* a form input has focus — humans cannot type that fast.                  */
+const SCAN_DEBOUNCE_MS  = 80;   // flush buffer this long after last char
+const SCAN_MAX_CHAR_GAP = 80;   // chars arriving within this gap = scanner
+const MIN_BARCODE_LEN   = 3;
 
 function useScannerInput(onBarcode, paused) {
-  const buffer   = useRef("");
-  const timer    = useRef(null);
-  const inputRef = useRef(null);
+  const buffer      = useRef("");
+  const timer       = useRef(null);
+  const lastKeyTime = useRef(0);   // timestamp of the last keystroke
+  const inputRef    = useRef(null);
 
   const flush = useCallback(() => {
     const val = buffer.current.trim();
     buffer.current = "";
+    lastKeyTime.current = 0;
     if (val.length >= MIN_BARCODE_LEN && !paused) onBarcode(val);
   }, [onBarcode, paused]);
 
   useEffect(() => {
     const onKeyDown = (e) => {
-      if (
-        document.activeElement !== inputRef.current &&
-        document.activeElement.tagName !== "INPUT" &&
-        document.activeElement.tagName !== "TEXTAREA" &&
-        document.activeElement.tagName !== "SELECT"
-      ) {
-        inputRef.current?.focus();
-      }
+      // ── Guard: ignore synthetic / extension events with no key ──
+      if (!e || typeof e.key !== "string") return;
+
+      const now     = Date.now();
+      const gap     = now - lastKeyTime.current;
+      const focused = document.activeElement;
+
+      // ── Guard: nothing focused (e.g. iframe took focus) ──
+      if (!focused) return;
+
+      const isFormEl = (
+        focused !== inputRef.current &&
+        (focused.tagName === "INPUT" ||
+         focused.tagName === "TEXTAREA" ||
+         focused.tagName === "SELECT")
+      );
+
+      // ── Guard: ensure buffer is always a string ──
+      if (typeof buffer.current !== "string") buffer.current = "";
+
+      // --- ENTER key ---
       if (e.key === "Enter") {
-        clearTimeout(timer.current);
-        flush();
+        if (buffer.current.trim().length >= MIN_BARCODE_LEN) {
+          // If Enter arrives fast after buffered chars → it's the scanner
+          if (gap < SCAN_DEBOUNCE_MS * 2 || !isFormEl) {
+            e.preventDefault();   // don't submit any form
+            clearTimeout(timer.current);
+            flush();
+            return;
+          }
+        }
+        // Normal Enter from keyboard in a form — let it pass through
         return;
       }
+
+      // --- Printable character ---
       if (e.key.length === 1) {
+        if (isFormEl) {
+          // Only intercept if chars arrive fast enough to be a scanner
+          if (buffer.current.length === 0 && gap > SCAN_MAX_CHAR_GAP * 3) {
+            // First char arrived slowly → it's a human typing in the input
+            // Don't capture it; let it go to the input field normally
+            lastKeyTime.current = now;
+            return;
+          }
+          if (buffer.current.length > 0 && gap > SCAN_MAX_CHAR_GAP) {
+            // Mid-buffer but gap too long → human typing, reset buffer
+            buffer.current = "";
+            lastKeyTime.current = now;
+            return;
+          }
+          // Gap is short → scanner; steal the character from the form input
+          e.preventDefault();
+        } else {
+          // No form element focused — always capture to scanner buffer
+          if (!isFormEl) inputRef.current?.focus();
+        }
         buffer.current += e.key;
+        lastKeyTime.current = now;
         clearTimeout(timer.current);
         timer.current = setTimeout(flush, SCAN_DEBOUNCE_MS);
       }
@@ -987,6 +1041,740 @@ function LogSheetsMode() {
 }
 
 /* ════════════════════════════════════════════════════════════
+   openSOLogsheet - helper to print Sales Order Logsheet
+════════════════════════════════════════════════════════════ */
+function openSOLogsheet(so) {
+  const formattedDate = so.created_at ? new Date(so.created_at).toLocaleDateString("en-IN") : "—";
+  const totalAmount = parseFloat(so.total_amount || 0).toLocaleString("en-IN");
+  const amountReceived = parseFloat(so.payment_info?.amount_received || 0).toLocaleString("en-IN");
+  const balanceDue = parseFloat(so.payment_info?.balance_due || 0).toLocaleString("en-IN");
+  
+  let soNum = 1;
+  if (so.so_id) {
+    const matched = so.so_id.match(/\d+/);
+    if (matched) soNum = parseInt(matched[0], 10);
+  }
+  const paddedNum = String(soNum).padStart(2, '0');
+  const barcodeVal = so.barcode || `${so.so_id}-ITM-D${paddedNum}`;
+
+  const barcodeCell = so.barcode_image
+    ? `<img src="data:image/png;base64,${so.barcode_image}" style="height:54px;width:auto;display:block;margin:0 auto;" alt="${barcodeVal}" />`
+    : `<svg class="bc" data-value="${barcodeVal}" style="display:block;margin:0 auto;max-height:54px;"></svg>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SO Logsheet — ${so.so_id}</title>
+  <style>
+    @media print { .no-print { display: none !important; } }
+    * { box-sizing: border-box; }
+    body { font-family: Calibri, Arial, sans-serif; margin: 1.2cm 1.8cm; color: #0f172a; font-size: 12px; }
+    .header-bar { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 2.5px solid #0D9488; padding-bottom: 10px; margin-bottom: 15px; }
+    h1 { font-size: 18px; font-weight: 700; color: #0D9488; margin: 0 0 3px; }
+    .meta { font-size: 11px; color: #475569; line-height: 1.6; }
+    .meta strong { color: #0f172a; }
+    .section-title { font-size: 12px; font-weight: 700; color: #0D9488; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 15px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .grid-container { display: grid; grid-template-cols: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+    .detail-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc; }
+    .detail-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px; border-bottom: 1px dashed #f1f5f9; padding-bottom: 4px; }
+    .detail-row:last-child { margin-bottom: 0; border-bottom: none; }
+    .detail-label { color: #64748b; font-weight: 500; }
+    .detail-value { color: #0f172a; font-weight: 600; }
+    .barcode-box { text-align: center; padding: 15px; border: 2px dashed #0D9488; border-radius: 6px; background: #f0fdfa; }
+    .barcode-value { font-family: Courier New, monospace; font-size: 12px; font-weight: 700; color: #0f172a; margin-top: 5px; letter-spacing: 2px; }
+    .notice { background: #f0fdfa; border: 1px solid #99f6e4; padding: 8px 12px; font-size: 10px; color: #0f766e; border-radius: 4px; margin-bottom: 15px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th { background: #0D9488; color: #fff; font-size: 11px; padding: 8px; border: 1px solid #0D9488; text-align: left; }
+    td { border: 1px solid #cbd5e1; padding: 8px; font-size: 11px; vertical-align: middle; }
+    .c { text-align: center; }
+    .r { text-align: right; }
+    .font-bold { font-weight: 700; }
+    .sign-row { margin-top: 35px; display: flex; gap: 40px; font-size: 11px; color: #475569; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+    .sign-field { flex: 1; }
+    .sign-field .line { border-bottom: 1px solid #94a3b8; height: 35px; margin-bottom: 4px; }
+    .footer { margin-top: 25px; font-size: 9px; color: #94a3b8; display: flex; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 8px; }
+    .print-btn { background: #0D9488; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 600; }
+    .print-btn:hover { background: #0f766e; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+</head>
+<body>
+  <div class="header-bar">
+    <div>
+      <h1>Sales Order Outbound Logsheet</h1>
+      <div class="meta">
+        <strong>SO ID:</strong> ${so.so_id} &nbsp;|&nbsp;
+        <strong>Date Created:</strong> ${formattedDate} &nbsp;|&nbsp;
+        <strong>Status:</strong> ${so.status}
+      </div>
+    </div>
+    <button class="print-btn no-print" onclick="window.print()">Print Logsheet</button>
+  </div>
+
+  <div class="notice">
+    This document serves as the outbound picking and dispatch authorization. Please verify the physical product and quantity, note the driver details below, scan this barcode in the <strong>Delivery Scan</strong> screen, and submit to confirm dispatch.
+  </div>
+
+  <div class="grid-container">
+    <div class="detail-card">
+      <div class="section-title" style="margin-top:0">Customer Details</div>
+      <div class="detail-row"><span class="detail-label">Company Name:</span><span class="detail-value">${so.customer_name || "—"}</span></div>
+      <div class="detail-row"><span class="detail-label">Phone:</span><span class="detail-value">${so.customer_phone || "—"}</span></div>
+      <div class="detail-row"><span class="detail-label">Email:</span><span class="detail-value">${so.customer_email || "—"}</span></div>
+      <div class="detail-row"><span class="detail-label">Delivery Address:</span><span class="detail-value">${so.customer_address || "—"}</span></div>
+    </div>
+
+    <div class="detail-card">
+      <div class="section-title" style="margin-top:0">Payment & Barcode</div>
+      <div class="detail-row"><span class="detail-label">Payment Type:</span><span class="detail-value" style="text-transform: capitalize;">${so.payment_info?.payment_type || "—"}</span></div>
+      <div class="detail-row"><span class="detail-label">Total Amount:</span><span class="detail-value">₹${totalAmount}</span></div>
+      <div class="detail-row"><span class="detail-label">Paid Amount:</span><span class="detail-value">₹${amountReceived}</span></div>
+      <div class="detail-row"><span class="detail-label">Balance Due:</span><span class="detail-value" style="color: ${parseFloat(balanceDue) > 0 ? '#b91c1c' : '#15803d'}">₹${balanceDue}</span></div>
+    </div>
+  </div>
+
+  <div class="barcode-box">
+    ${barcodeCell}
+    <div class="barcode-value">${barcodeVal}</div>
+  </div>
+
+  <div class="section-title">Product & Fulfillment Details</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 50px;" class="c">S.No</th>
+        <th>Product Name</th>
+        <th style="width: 120px;" class="c">Product ID</th>
+        <th style="width: 100px;" class="r">Quantity</th>
+        <th style="width: 120px;" class="r">Unit Price</th>
+        <th style="width: 140px;" class="r">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="c font-bold">1</td>
+        <td class="font-bold">${so.product_name || "—"}</td>
+        <td class="c font-bold">${so.product_id_display || so.product || "—"}</td>
+        <td class="r font-bold">${so.quantity}</td>
+        <td class="r">₹${parseFloat(so.unit_price || 0).toLocaleString("en-IN")}</td>
+        <td class="r font-bold">₹${totalAmount}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="section-title">Delivery & Dispatch Information (Hand-write during picking)</div>
+  <div class="grid-container" style="margin-top: 10px;">
+    <div class="detail-card" style="border: 2px solid #cbd5e1;">
+      <div style="font-size: 10px; color: #475569; font-weight: 700; margin-bottom: 20px;">DRIVER DETAILS:</div>
+      <div style="border-bottom: 1.5px solid #94a3b8; height: 30px; margin-bottom: 15px;"></div>
+      <div style="font-size: 9px; color: #94a3b8;">Full Name & Contact Phone</div>
+    </div>
+    <div class="detail-card" style="border: 2px solid #cbd5e1;">
+      <div style="font-size: 10px; color: #475569; font-weight: 700; margin-bottom: 20px;">VEHICLE NUMBER:</div>
+      <div style="border-bottom: 1.5px solid #94a3b8; height: 30px; margin-bottom: 15px;"></div>
+      <div style="font-size: 9px; color: #94a3b8;">e.g. MH-12-AB-1234</div>
+    </div>
+  </div>
+
+  <div class="sign-row">
+    <div class="sign-field"><div class="line"></div>Picked & Packed By</div>
+    <div class="sign-field"><div class="line"></div>Security Gate Verified</div>
+    <div class="sign-field"><div class="line"></div>Authorized Signature</div>
+  </div>
+
+  <div class="footer">
+    <span>WMS Pro — Sales Order Logsheet</span>
+    <span>Printed: ${new Date().toLocaleDateString("en-IN")}</span>
+  </div>
+
+  <script>
+    window.onload = function() {
+      document.querySelectorAll('svg.bc').forEach(function(el) {
+        var val = el.getAttribute('data-value') || '';
+        if (!val) return;
+        try {
+          JsBarcode(el, val, {
+            format: 'CODE128', width: 1.5, height: 44,
+            displayValue: false, margin: 2
+          });
+        } catch(e) {
+          el.outerHTML = '<span style="font-size:10px;font-family:monospace;">' + val + '</span>';
+        }
+      });
+      setTimeout(function() { window.print(); }, 400);
+    };
+  </script>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=1100,height=800");
+  if (!win) {
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `so-logsheet-${so.so_id}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
+
+/* ════════════════════════════════════════════════════════════
+   MODE 3.5 — SO Log Sheets
+════════════════════════════════════════════════════════════ */
+function SOLogSheetsMode() {
+  const [sos, setSos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [printing, setPrinting] = useState({});
+  const [expanded, setExpanded] = useState(null);
+  const [globalError, setGlobalError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await listSalesOrders();
+      setSos(toArr(res).filter(s => ["Ready for Dispatch", "Dispatched"].includes(s.status)));
+      setGlobalError("");
+    } catch (err) {
+      setGlobalError(err.message || "Failed to load Sales Orders");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handlePrint = (e, so) => {
+    e.stopPropagation();
+    setPrinting(p => ({ ...p, [so.so_id]: true }));
+    try {
+      openSOLogsheet(so);
+    } catch (err) {
+      setGlobalError(err.message || "Failed to print logsheet");
+    } finally {
+      setPrinting(p => ({ ...p, [so.so_id]: false }));
+    }
+  };
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-[#1E3A8A]" /></div>;
+
+  if (sos.length === 0) return (
+    <div className="text-center py-12 text-gray-400">
+      <Printer className="w-8 h-8 mx-auto mb-2 opacity-30" />
+      <p className="text-sm">No SO Log Sheets available.</p>
+      <p className="text-xs mt-1">Log sheets appear here after printing them from the Outbound orders page.</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-2">
+      {globalError && (
+        <div className="p-3 mb-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {globalError}
+        </div>
+      )}
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs text-gray-500">
+          Click <strong>Print Logsheet</strong> to view or reprint the outbound picking and dispatch authorization.
+        </p>
+        <button onClick={load} className="p-1.5 rounded border border-gray-200 hover:bg-gray-50">
+          <RefreshCw className="w-3.5 h-3.5 text-gray-500" />
+        </button>
+      </div>
+
+      {sos.map(so => {
+        const isExp = expanded === so.so_id;
+        const prt = printing[so.so_id];
+        const balanceDue = parseFloat(so.payment_info?.balance_due || 0);
+
+        return (
+          <Card key={so.so_id} className={`shadow-sm overflow-hidden transition-all ${isExp ? "border-[#1E3A8A]/30" : "border-gray-200"}`}>
+            <div
+              className={`flex items-center justify-between px-5 py-3.5 cursor-pointer transition-colors ${isExp ? "bg-[#1E3A8A]/5" : "bg-white hover:bg-gray-50"}`}
+              onClick={() => setExpanded(isExp ? null : so.so_id)}
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-bold text-[#1E3A8A] font-mono">{so.so_id}</p>
+                  <span className={`px-2 py-0.5 rounded border text-[10px] font-semibold ${
+                    so.status === "Dispatched" 
+                      ? "border-teal-200 bg-teal-50 text-teal-700" 
+                      : "border-orange-200 bg-orange-50 text-orange-700"
+                  }`}>
+                    {so.status}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">{so.customer_name} · {so.product_name} · Qty: {so.quantity}</p>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0 ml-4" onClick={e => e.stopPropagation()}>
+                <Button
+                  size="sm"
+                  onClick={e => handlePrint(e, so)}
+                  disabled={prt}
+                  className="h-8 bg-[#1E3A8A] hover:bg-[#162d6e] text-xs font-semibold"
+                >
+                  {prt
+                    ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Loading...</>
+                    : <><Printer className="w-3.5 h-3.5 mr-1.5" />Print Logsheet</>}
+                </Button>
+              </div>
+            </div>
+
+            {isExp && (
+              <div className="border-t border-gray-100 p-5 bg-slate-50/50 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white p-3 rounded-lg border border-slate-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Customer Info</p>
+                    <p className="text-xs font-bold text-slate-800">{so.customer_name}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Phone: {so.customer_phone}</p>
+                    <p className="text-[10px] text-slate-500">Email: {so.customer_email}</p>
+                    <p className="text-[10px] text-slate-600 mt-2">Address: {so.customer_address || "—"}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-slate-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Payment Status</p>
+                    {so.payment_info ? (
+                      <div className="text-[11px] space-y-0.5">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Type:</span>
+                          <span className="font-semibold capitalize">{so.payment_info.payment_type}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Total Amount:</span>
+                          <span className="font-semibold">₹{parseFloat(so.total_amount || 0).toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Paid Amount:</span>
+                          <span className="font-semibold text-emerald-700">₹{parseFloat(so.payment_info.amount_received || 0).toLocaleString("en-IN")}</span>
+                        </div>
+                        <div className="flex justify-between border-t border-dashed border-slate-100 pt-1 mt-1 font-bold">
+                          <span className="text-slate-600 font-semibold">Balance Due:</span>
+                          <span className={balanceDue > 0 ? "text-rose-600" : "text-emerald-700"}>₹{balanceDue.toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs font-bold text-emerald-700 bg-emerald-50 py-1 px-2.5 rounded border border-emerald-100 inline-block">Fully Paid</p>
+                    )}
+                  </div>
+                  <div className="bg-white p-3 rounded-lg border border-slate-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Dispatch Details</p>
+                    {so.status === "Dispatched" ? (
+                      <div className="text-[11px] space-y-1">
+                        <p className="text-slate-700"><span className="text-gray-400 font-medium">Driver:</span> <strong className="font-semibold">{so.driver_name || "—"}</strong></p>
+                        <p className="text-slate-700"><span className="text-gray-400 font-medium">Vehicle:</span> <strong className="font-semibold">{so.vehicle_number || "—"}</strong></p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600 font-medium">Awaiting Dispatch Scan</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   MODE 4 — Delivery Scan Mode
+   Accessible to: inventory_manager, admin
+════════════════════════════════════════════════════════════ */
+function DeliveryScanMode() {
+  const { toast } = useToast();
+
+  /* ── SO picker list (Ready for Dispatch orders) ── */
+  const [soList, setSoList]             = useState([]);
+  const [listLoading, setListLoading]   = useState(false);
+  const [listError, setListError]       = useState("");
+  const [activeSO, setActiveSO]         = useState(null);   // selected from dropdown (context only)
+
+  /* ── Scan / decode state ── */
+  const [decoding, setDecoding]         = useState(false);
+  const [lastScan, setLastScan]         = useState({ value: "", type: "" });
+  const [soDetails, setSoDetails]       = useState(null);   // populated ONLY after barcode scan
+  const [driverName, setDriverName]     = useState("");
+  const [driverPhone, setDriverPhone]   = useState("");
+  const [vehicleNumber, setVehicleNumber] = useState("");
+  const [dispatched, setDispatched]     = useState(false);
+  const [confirming, setConfirming]     = useState(false);
+  const [globalError, setGlobalError]   = useState("");
+
+  /* ── paused: true while any driver form field is focused ──
+     This prevents the scanner hook from intercepting keystrokes
+     the user types into the driver name / phone / vehicle fields. */
+  const [paused, setPaused]             = useState(false);
+
+  /* ── Load Ready-for-Dispatch SOs on mount ── */
+  const loadReadySOs = useCallback(async () => {
+    setListLoading(true);
+    setListError("");
+    try {
+      const res = await listSalesOrders();
+      const arr = toArr(res);
+      setSoList(arr.filter(s => s.status === "Ready for Dispatch"));
+    } catch (err) {
+      setListError(err.message || "Failed to load orders");
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadReadySOs(); }, [loadReadySOs]);
+
+  /* ── Barcode scan → decode → populate SO details card ──
+     The dropdown only sets the "active" context.
+     Nothing is shown until the physical barcode is scanned. */
+  const handleBarcode = useCallback(async (barcode) => {
+    setDecoding(true);
+    setLastScan({ value: barcode, type: "ok" });
+    setSoDetails(null);
+    setDispatched(false);
+    setDriverName("");
+    setDriverPhone("");
+    setVehicleNumber("");
+    setGlobalError("");
+    try {
+      const res = await decodeSOBarcode({ barcode_value: barcode });
+      // Warn if scanned SO differs from the pre-selected one
+      if (activeSO && res.so_id !== activeSO.so_id) {
+        setGlobalError(`Scanned barcode belongs to ${res.so_id}, not the selected ${activeSO.so_id}. Showing scanned order.`);
+      }
+      setSoDetails(res);
+    } catch (err) {
+      setLastScan({ value: `${barcode} — ${err.message}`, type: "error" });
+      setGlobalError(err.message || "Failed to find Sales Order");
+    } finally {
+      setDecoding(false);
+    }
+  }, [activeSO]);
+
+  /* paused is passed so the hook stops intercepting while driver fields are focused */
+  const inputRef = useScannerInput(handleBarcode, paused);
+
+  const canDispatch = driverName.trim() && driverPhone.trim() && vehicleNumber.trim();
+
+  const handleConfirmDispatch = async () => {
+    if (!soDetails) return;
+    if (!canDispatch) {
+      setGlobalError("Driver Name, Driver Phone, and Vehicle Number are all required.");
+      return;
+    }
+    setConfirming(true);
+    setGlobalError("");
+    try {
+      await dispatchSO(soDetails.so_id, {
+        driver_name:    `${driverName.trim()} | ${driverPhone.trim()}`,
+        vehicle_number: vehicleNumber.trim(),
+      });
+      setDispatched(true);
+      setSoList(prev => prev.filter(s => s.so_id !== soDetails.so_id));
+      toast({
+        title: "Dispatch Successful 🚚",
+        description: `Sales Order ${soDetails.so_id} has been dispatched.`,
+      });
+    } catch (err) {
+      setGlobalError(err.message || "Failed to confirm dispatch");
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const resetScan = () => {
+    setSoDetails(null);
+    setActiveSO(null);
+    setLastScan({ value: "", type: "" });
+    setDispatched(false);
+    setDriverName(""); setDriverPhone(""); setVehicleNumber("");
+    setGlobalError("");
+    setPaused(false);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  return (
+    <div className="space-y-4">
+      <input ref={inputRef} className="sr-only" readOnly tabIndex={-1} />
+
+      {/* ══ Select Sales Order dropdown ══ */}
+      <div className="grid gap-1.5">
+        <Label className="text-xs font-semibold text-gray-600">Select Sales Order (Ready for Dispatch)</Label>
+        <div className="flex items-center gap-2">
+          <select
+            value={activeSO?.so_id || ""}
+            onChange={e => {
+              const so = soList.find(s => s.so_id === e.target.value);
+              setActiveSO(so || null);
+              /* Clear any scan result when switching order */
+              setSoDetails(null);
+              setLastScan({ value: "", type: "" });
+              setDispatched(false);
+              setDriverName(""); setDriverPhone(""); setVehicleNumber("");
+              setGlobalError("");
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }}
+            className="flex h-9 w-full max-w-sm rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="">— Select Sales Order —</option>
+            {listLoading && <option disabled>Loading...</option>}
+            {soList.map(so => (
+              <option key={so.so_id} value={so.so_id}>
+                {so.so_id} · {so.customer_name} · {so.product_name} · Qty: {so.quantity}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={loadReadySOs}
+            disabled={listLoading}
+            className="p-2 rounded border border-gray-200 hover:bg-gray-50 transition-colors shrink-0"
+            title="Refresh list"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-gray-500 ${listLoading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+        {listError && (
+          <p className="text-[10px] text-red-500 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3" /> {listError}
+          </p>
+        )}
+        {!listLoading && soList.length === 0 && !listError && (
+          <p className="text-[10px] text-gray-400">No orders ready for dispatch yet. Print a logsheet first.</p>
+        )}
+      </div>
+
+      {/* ══ Scanner status bar — active only after an SO is selected from dropdown ══ */}
+      <ScannerStatusBar active={!!activeSO} paused={paused} loading={decoding} />
+
+      {/* Instruction text */}
+      {!activeSO && (
+        <p className="text-xs text-gray-500">
+          Select a <strong>Sales Order</strong> above, then scan its logsheet barcode to begin dispatch.
+        </p>
+      )}
+      {activeSO && !soDetails && (
+        <p className="text-xs text-gray-500">
+          Now scan the barcode on the logsheet for{" "}
+          <strong className="text-[#1E3A8A] font-mono">{activeSO.so_id}</strong>.
+        </p>
+      )}
+
+      {globalError && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {globalError}
+        </div>
+      )}
+
+      {lastScan.value && <ScanFlash value={lastScan.value} type={lastScan.type} />}
+
+      {/* ══ SO Details card — ONLY shown after a successful barcode scan ══ */}
+      {soDetails && (
+        <Card className={`border-2 shadow-md transition-all ${dispatched ? "border-emerald-500 bg-emerald-50/10" : "border-[#1E3A8A]"}`}>
+          <CardContent className="p-6">
+            {/* ── Header ── */}
+            <div className="flex items-start justify-between mb-5 pb-4 border-b border-gray-100">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-base font-bold text-gray-900 font-mono">{soDetails.so_id}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${
+                    dispatched
+                      ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                      : soDetails.status === "Ready for Dispatch"
+                      ? "bg-orange-100 text-orange-700 border-orange-300"
+                      : "bg-gray-100 text-gray-700 border-gray-300"
+                  }`}>
+                    {dispatched ? "Dispatched ✓" : soDetails.status}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1 font-mono">Barcode: {soDetails.barcode}</p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {soDetails.barcode_image && (
+                  <img src={`data:image/png;base64,${soDetails.barcode_image}`} alt={soDetails.barcode} className="h-10 w-auto" />
+                )}
+                {!dispatched && (
+                  <button onClick={resetScan} className="p-1.5 rounded hover:bg-gray-100">
+                    <XCircle className="w-4 h-4 text-gray-400" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* ── Order Info Cards ── */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-[#1E3A8A] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5" /> Product
+                </p>
+                <p className="text-sm font-bold text-gray-800 leading-tight">{soDetails.product_name}</p>
+                <p className="text-[10px] text-gray-400 font-mono mt-0.5">{soDetails.product_id_display}</p>
+                <div className="mt-3 flex items-baseline gap-1">
+                  <span className="text-2xl font-black text-[#1E3A8A]">{soDetails.quantity}</span>
+                  <span className="text-xs text-gray-500 font-medium">units</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-[#1E3A8A] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5" /> Customer
+                </p>
+                <p className="text-sm font-bold text-gray-800 leading-tight">{soDetails.customer_name}</p>
+                <p className="text-[10px] text-gray-500 mt-1">{soDetails.customer_phone}</p>
+                <p className="text-[10px] text-gray-500">{soDetails.customer_email}</p>
+                <p className="text-[10px] text-gray-600 mt-2 line-clamp-2" title={soDetails.customer_address}>
+                  📍 {soDetails.customer_address || "—"}
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-[#1E3A8A] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <DollarSign className="w-3.5 h-3.5" /> Payment
+                </p>
+                {soDetails.payment_info ? (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Type</span>
+                      <span className="font-bold capitalize">{soDetails.payment_info.payment_type}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Total</span>
+                      <span className="font-bold">₹{parseFloat(soDetails.total_amount).toLocaleString("en-IN")}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Paid</span>
+                      <span className="font-bold text-emerald-700">₹{parseFloat(soDetails.payment_info.amount_received).toLocaleString("en-IN")}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-200 pt-1.5 mt-1">
+                      <span className="text-gray-600 font-semibold">Balance Due</span>
+                      <span className={`font-bold ${parseFloat(soDetails.payment_info.balance_due) > 0 ? "text-red-600" : "text-emerald-700"}`}>
+                        ₹{parseFloat(soDetails.payment_info.balance_due).toLocaleString("en-IN")}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-emerald-700 font-bold bg-emerald-50 p-2 rounded-lg flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5" /> Fully Paid
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── Dispatch Form / Success Banner ── */}
+            {!dispatched ? (
+              <div className="bg-gradient-to-br from-blue-50 to-slate-50 p-5 rounded-xl border border-blue-100 mb-5">
+                <p className="text-xs font-bold text-[#1E3A8A] uppercase tracking-widest mb-4 flex items-center gap-2">
+                  <Truck className="w-4 h-4" /> Driver &amp; Dispatch Details
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="driverName" className="text-xs font-semibold text-gray-700">
+                      Driver Name <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="driverName"
+                      placeholder="e.g. Ramesh Kumar"
+                      value={driverName}
+                      onChange={(e) => setDriverName(e.target.value)}
+                      onFocus={() => setPaused(true)}
+                      onBlur={() => setPaused(false)}
+                      className="h-9 text-sm border-gray-300 bg-white"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="driverPhone" className="text-xs font-semibold text-gray-700">
+                      Driver Phone <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="driverPhone"
+                      type="tel"
+                      placeholder="e.g. +91 98765 43210"
+                      value={driverPhone}
+                      onChange={(e) => setDriverPhone(e.target.value)}
+                      onFocus={() => setPaused(true)}
+                      onBlur={() => setPaused(false)}
+                      className="h-9 text-sm border-gray-300 bg-white"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="vehicleNumber" className="text-xs font-semibold text-gray-700">
+                      Vehicle Number <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="vehicleNumber"
+                      placeholder="e.g. TN-01-AB-1234"
+                      value={vehicleNumber}
+                      onChange={(e) => setVehicleNumber(e.target.value)}
+                      onFocus={() => setPaused(true)}
+                      onBlur={() => setPaused(false)}
+                      className="h-9 text-sm border-gray-300 bg-white"
+                    />
+                  </div>
+                </div>
+                {(!driverName.trim() || !driverPhone.trim() || !vehicleNumber.trim()) && (
+                  <p className="text-[10px] text-blue-600/70 mt-3 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                    All three fields are required before dispatching
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-200 mb-5">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-8 h-8 text-emerald-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-emerald-800">Sales Order Dispatched Successfully 🚚</p>
+                    <div className="grid grid-cols-3 gap-3 mt-3">
+                      <div>
+                        <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wider">Driver</p>
+                        <p className="text-xs font-bold text-emerald-900 mt-0.5">{driverName}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wider">Phone</p>
+                        <p className="text-xs font-bold text-emerald-900 mt-0.5">{driverPhone}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-emerald-600 font-semibold uppercase tracking-wider">Vehicle</p>
+                        <p className="text-xs font-bold text-emerald-900 mt-0.5">{vehicleNumber}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Action Buttons ── */}
+            <div className="flex gap-2">
+              {!dispatched && (
+                <Button
+                  onClick={handleConfirmDispatch}
+                  disabled={confirming || !canDispatch}
+                  className="h-9 bg-teal-600 hover:bg-teal-700 text-white font-semibold text-sm px-5"
+                >
+                  {confirming
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Confirming...</>
+                    : <><Truck className="w-4 h-4 mr-2" />Confirm Dispatch</>}
+                </Button>
+              )}
+              <Button variant="outline" onClick={resetScan} className="h-9 text-sm border-gray-300">
+                {dispatched ? "📦 Scan Next Order" : "Cancel"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
    MAIN PAGE
    CHANGE: added "inventory_logger" to the Log Sheets mode roles
 ════════════════════════════════════════════════════════════ */
@@ -1009,6 +1797,18 @@ const MODES = [
     icon: Printer,
     // inventory_logger added — they only need to print sheets, not scan or putaway
     roles: ["supervisor", "admin", "inventory_manager", "inventory_logger"],
+  },
+  {
+    id: "so_logs",
+    label: "SO Log Sheets",
+    icon: Printer,
+    roles: ["supervisor", "admin", "inventory_manager", "inventory_logger"],
+  },
+  {
+    id: "delivery",
+    label: "Delivery Scan",
+    icon: Truck,
+    roles: ["inventory_manager", "admin"],
   },
 ];
 
@@ -1065,6 +1865,8 @@ export default function BarcodeScannerPage() {
       {mode === "add"     && <AddItemsMode user={user} />}
       {mode === "putaway" && <PutawayMode />}
       {mode === "logs"    && <LogSheetsMode />}
+      {mode === "so_logs" && <SOLogSheetsMode />}
+      {mode === "delivery" && <DeliveryScanMode />}
     </div>
   );
 }

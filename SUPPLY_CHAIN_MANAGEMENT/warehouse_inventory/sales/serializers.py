@@ -56,6 +56,7 @@ class SalesOrderSerializer(serializers.ModelSerializer):
     customer_name         = serializers.CharField(source="cpr.customer_name", read_only=True)
     customer_phone        = serializers.CharField(source="cpr.customer_phone", read_only=True)
     customer_email        = serializers.CharField(source="cpr.customer_email", read_only=True)
+    customer_address      = serializers.CharField(source="cpr.customer_address", read_only=True)
     cpr_status            = serializers.CharField(source="cpr.status", read_only=True)
     created_by_name       = serializers.SerializerMethodField()
     supervisor_name       = serializers.SerializerMethodField()
@@ -65,19 +66,21 @@ class SalesOrderSerializer(serializers.ModelSerializer):
         model  = SalesOrder
         fields = [
             "so_id", "cpr", "cpr_status",
-            "customer_name", "customer_phone", "customer_email",
+            "customer_name", "customer_phone", "customer_email", "customer_address",
             "product", "product_id_display", "product_name",
             "quantity", "unit_price", "total_amount",
             "status", "supervisor_notes",
             "supervisor_reviewed_by", "supervisor_name", "supervisor_reviewed_at",
             "created_by", "created_by_name", "created_at", "updated_at",
             "payment_info",
+            "barcode", "barcode_image", "driver_name", "vehicle_number", "logsheet_printed",
         ]
         read_only_fields = [
             "so_id", "total_amount", "status",
             "supervisor_reviewed_by", "supervisor_reviewed_at",
             "created_by", "created_at", "updated_at",
             "product", "quantity", "unit_price",
+            "barcode", "barcode_image", "logsheet_printed",
         ]
 
     def get_created_by_name(self, obj):

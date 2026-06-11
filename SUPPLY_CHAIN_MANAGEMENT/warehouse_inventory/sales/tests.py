@@ -212,8 +212,31 @@ class SalesWorkflowTestCase(APITestCase):
         response = self.inv_mgr_client.post(f"/api/sales/so/{so_id}/pick-pack/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "Pick & Pack")
+        self.assertEqual(response.data["logsheet_printed"], False)
+        barcode_val = response.data["barcode"]
+        self.assertTrue(barcode_val.endswith("-ITM-D01"))
+
+        # Quality assistant cannot print logsheet
+        response = self.qual_asst_client.post(f"/api/sales/so/{so_id}/print-logsheet/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Inventory manager can print logsheet
+        response = self.inv_mgr_client.post(f"/api/sales/so/{so_id}/print-logsheet/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["logsheet_printed"], True)
+
+        # Inventory manager can decode the SO barcode
+        response = self.inv_mgr_client.post("/api/sales/so/decode-barcode/", {"barcode_value": barcode_val})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["so_id"], so_id)
 
         # Inventory manager can dispatch
-        response = self.inv_mgr_client.post(f"/api/sales/so/{so_id}/dispatch/")
+        dispatch_payload = {
+            "driver_name": "John Doe",
+            "vehicle_number": "MH-12-AB-1234"
+        }
+        response = self.inv_mgr_client.post(f"/api/sales/so/{so_id}/dispatch/", dispatch_payload)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "Dispatched")
+        self.assertEqual(response.data["driver_name"], "John Doe")
+        self.assertEqual(response.data["vehicle_number"], "MH-12-AB-1234")

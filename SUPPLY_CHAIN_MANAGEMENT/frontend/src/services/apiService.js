@@ -501,8 +501,12 @@ export const financeConfirmSO = (soId, data) =>
   apiRequest(`/sales/so/${soId}/finance-confirm/`, 'PATCH', data);
 export const pickPackSO = (soId) => 
   apiRequest(`/sales/so/${soId}/pick-pack/`, 'POST');
-export const dispatchSO = (soId) => 
-  apiRequest(`/sales/so/${soId}/dispatch/`, 'POST');
+export const printSOLogsheet = (soId) =>
+  apiRequest(`/sales/so/${soId}/print-logsheet/`, 'POST');
+export const dispatchSO = (soId, data) => 
+  apiRequest(`/sales/so/${soId}/dispatch/`, 'POST', data);
+export const decodeSOBarcode = (data) =>
+  apiRequest('/sales/so/decode-barcode/', 'POST', data);
 
 // Payments
 export const listSOPayments = (all = false) => 

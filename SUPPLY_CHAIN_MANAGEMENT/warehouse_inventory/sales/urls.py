@@ -10,6 +10,8 @@ from .views import (
     SOFinanceConfirmView,
     SODispatchView,
     SOPickPackView,
+    SOPrintLogsheetView,
+    SODecodeBarcodeView,
     SOPaymentListView,
     SOBalancePaymentView,
 )
@@ -24,10 +26,12 @@ urlpatterns = [
 
     # ── Sales Order ────────────────────────────────────────────────────────
     path("so/",                                SOListCreateView.as_view(),       name="so-list-create"),
+    path("so/decode-barcode/",                 SODecodeBarcodeView.as_view(),    name="so-decode-barcode"),
     path("so/<str:so_id>/supervisor-action/",  SOSupervisorActionView.as_view(), name="so-supervisor-action"),
     path("so/<str:so_id>/payment/",            SOPaymentView.as_view(),          name="so-payment"),
     path("so/<str:so_id>/finance-confirm/",    SOFinanceConfirmView.as_view(),   name="so-finance-confirm"),
     path("so/<str:so_id>/pick-pack/",          SOPickPackView.as_view(),         name="so-pick-pack"),
+    path("so/<str:so_id>/print-logsheet/",     SOPrintLogsheetView.as_view(),    name="so-print-logsheet"),
     path("so/<str:so_id>/dispatch/",           SODispatchView.as_view(),         name="so-dispatch"),
     path("so/<str:so_id>/balance-payment/",    SOBalancePaymentView.as_view(),   name="so-balance-payment"),
 
